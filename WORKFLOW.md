@@ -1,0 +1,1 @@
+# Kế thừa từ Gemini Creative Suite
