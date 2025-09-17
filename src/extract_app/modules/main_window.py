@@ -11,6 +11,7 @@
 
 import customtkinter as ctk
 from customtkinter import filedialog
+from customtkinter import filedialog
 import sv_ttk
 from pathlib import Path
 
@@ -28,6 +29,7 @@ class MainWindow(ctk.CTk):
     def _create_widgets(self):
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
+        self.grid_rowconfigure(1, weight=1)
 
         input_frame = ctk.CTkFrame(self)
         input_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
@@ -38,6 +40,7 @@ class MainWindow(ctk.CTk):
 
         self.selected_file_label = ctk.CTkLabel(input_frame, text="Chưa có file nào được chọn.", anchor="w")
         self.selected_file_label.grid(row=0, column=1, padx=10, pady=10, sticky="ew")
+
 
     def _on_select_file_button_click(self):
 <<<<<<< HEAD
