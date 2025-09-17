@@ -1,16 +1,9 @@
 # file-path: src/extract_app/modules/main_window.py
-<<<<<<< HEAD
-# version: 2.2
+# version: 2.3
 # last-updated: 2025-09-17
-# description: Cập nhật để gọi parser xử lý file sau khi chọn.
-=======
-# version: 2.1
-# last-updated: 2025-09-17
-# description: Định nghĩa class MainWindow, chứa giao diện chính và logic chọn file.
->>>>>>> be9bcec25fdf640ee968b13529e3921e75ef1c6f
+# description: Thêm Textbox để hiển thị kết quả trích xuất trên giao diện.
 
 import customtkinter as ctk
-from customtkinter import filedialog
 from customtkinter import filedialog
 import sv_ttk
 from pathlib import Path
@@ -27,10 +20,11 @@ class MainWindow(ctk.CTk):
         self._create_widgets()
 
     def _create_widgets(self):
+        # Cấu hình grid layout
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=1)
-        self.grid_rowconfigure(1, weight=1)
+        self.grid_rowconfigure(1, weight=1) # Dành không gian cho khu vực kết quả
 
+        # --- KHUNG CHỌN FILE ---
         input_frame = ctk.CTkFrame(self)
         input_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
         input_frame.grid_columnconfigure(1, weight=1)
@@ -41,9 +35,12 @@ class MainWindow(ctk.CTk):
         self.selected_file_label = ctk.CTkLabel(input_frame, text="Chưa có file nào được chọn.", anchor="w")
         self.selected_file_label.grid(row=0, column=1, padx=10, pady=10, sticky="ew")
 
+        # --- KHUNG HIỂN THỊ KẾT QUẢ ---
+        self.results_textbox = ctk.CTkTextbox(self, wrap="word")
+        self.results_textbox.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")
+
 
     def _on_select_file_button_click(self):
-<<<<<<< HEAD
         file_types = [("Ebook files", "*.pdf *.epub"), ("All files", "*.*")]
         filepath = filedialog.askopenfilename(title="Chọn một file Ebook", filetypes=file_types)
         
@@ -53,38 +50,22 @@ class MainWindow(ctk.CTk):
 
         self.selected_file_label.configure(text=filepath)
         print(f"File đã chọn: {filepath}")
+        
+        # Xóa nội dung cũ trước khi hiển thị kết quả mới
+        self.results_textbox.delete("1.0", "end")
 
         # Phân loại và xử lý file
         file_extension = Path(filepath).suffix.lower()
         if file_extension == ".pdf":
             print("\n--- Bắt đầu trích xuất PDF ---")
             extracted_text = pdf_parser.extract_text_from_pdf(filepath)
-            print(extracted_text)
+            self.results_textbox.insert("1.0", extracted_text)
             print("--- Hoàn tất trích xuất PDF ---\n")
         elif file_extension == ".epub":
-            print("Chức năng xử lý EPUB sẽ được triển khai.")
+            message = "Chức năng xử lý EPUB sẽ được triển khai."
+            self.results_textbox.insert("1.0", message)
+            print(message)
         else:
-            print(f"Định dạng file '{file_extension}' không được hỗ trợ.")
-=======
-        """
-        # hotfix - 2025-09-17 - Triển khai logic mở hộp thoại chọn file.
-        Xử lý sự kiện khi nút 'Chọn File Ebook...' được nhấn.
-        """
-        file_types = [
-            ("Ebook files", "*.pdf *.epub"),
-            ("PDF files", "*.pdf"),
-            ("EPUB files", "*.epub"),
-            ("All files", "*.*")
-        ]
-        
-        filepath = filedialog.askopenfilename(
-            title="Chọn một file Ebook",
-            filetypes=file_types
-        )
-        
-        if filepath:
-            self.selected_file_label.configure(text=filepath)
-            print(f"File đã chọn: {filepath}")
-        else:
-            print("Không có file nào được chọn.")
->>>>>>> be9bcec25fdf640ee968b13529e3921e75ef1c6f
+            message = f"Định dạng file '{file_extension}' không được hỗ trợ."
+            self.results_textbox.insert("1.0", message)
+            print(message)
