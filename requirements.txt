@@ -1,5 +1,6 @@
-# Các thư viện cơ bản ban đầu
+# requirements.txt
 PyMuPDF
 ebooklib
 customtkinter
 sv-ttk
+Pillow

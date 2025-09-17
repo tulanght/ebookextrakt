@@ -1,12 +1,14 @@
 # file-path: src/extract_app/modules/main_window.py
-# version: 2.4
+# version: 3.0
 # last-updated: 2025-09-17
-# description: Cập nhật để xử lý và hiển thị dữ liệu có cấu trúc (text/image).
+# description: Tái cấu trúc để dùng CTkScrollableFrame, hiển thị cả text và image.
 
 import customtkinter as ctk
 from customtkinter import filedialog
 import sv_ttk
 from pathlib import Path
+from PIL import Image
+import io
 
 from ..core import pdf_parser
 
@@ -32,43 +34,54 @@ class MainWindow(ctk.CTk):
         self.selected_file_label = ctk.CTkLabel(input_frame, text="Chưa có file nào được chọn.", anchor="w")
         self.selected_file_label.grid(row=0, column=1, padx=10, pady=10, sticky="ew")
 
-        self.results_textbox = ctk.CTkTextbox(self, wrap="word")
-        self.results_textbox.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")
+        # Thay thế Textbox bằng ScrollableFrame
+        self.results_frame = ctk.CTkScrollableFrame(self)
+        self.results_frame.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")
+        self.results_frame.grid_columnconfigure(0, weight=1)
+
+    def _clear_results_frame(self):
+        """Xóa tất cả các widget con khỏi khung kết quả."""
+        for widget in self.results_frame.winfo_children():
+            widget.destroy()
+
+    def _display_results(self, content_list):
+        """Hiển thị danh sách nội dung (text/image) lên khung cuộn."""
+        self._clear_results_frame()
+        
+        # Lấy chiều rộng của frame để tính toán wraplength cho text
+        # Trừ đi một khoảng nhỏ để tránh tràn lề
+        frame_width = self.results_frame.winfo_width() - 30 
+        if frame_width < 100: frame_width = 600 # Giá trị mặc định nếu frame chưa được vẽ
+
+        for content_type, data in content_list:
+            if content_type == 'text':
+                text_label = ctk.CTkLabel(
+                    self.results_frame, 
+                    text=data, 
+                    wraplength=frame_width, 
+                    justify="left",
+                    anchor="w"
+                )
+                text_label.grid(sticky="w", padx=5, pady=5)
+            elif content_type == 'image':
+                try:
+                    image_data = Image.open(io.BytesIO(data))
+                    ctk_image = ctk.CTkImage(light_image=image_data, size=image_data.size)
+                    
+                    image_label = ctk.CTkLabel(self.results_frame, image=ctk_image, text="")
+                    image_label.grid(pady=10)
+                except Exception as e:
+                    print(f"Lỗi khi hiển thị ảnh: {e}")
+
 
     def _on_select_file_button_click(self):
-        file_types = [("Ebook files", "*.pdf *.epub"), ("All files", "*.*")]
-        filepath = filedialog.askopenfilename(title="Chọn một file Ebook", filetypes=file_types)
-        
-        if not filepath:
-            print("Không có file nào được chọn.")
-            return
+        filepath = filedialog.askopenfilename(title="Chọn một file Ebook", filetypes=[("Ebook files", "*.pdf *.epub")])
+        if not filepath: return
 
         self.selected_file_label.configure(text=filepath)
-        print(f"File đã chọn: {filepath}")
-        
-        self.results_textbox.delete("1.0", "end")
+        self._clear_results_frame() # Xóa kết quả cũ ngay lập tức
 
         file_extension = Path(filepath).suffix.lower()
         if file_extension == ".pdf":
-            print("\n--- Bắt đầu trích xuất PDF ---")
             content_list = pdf_parser.parse_pdf(filepath)
-            
-            image_count = 0
-            full_text = []
-            for content_type, data in content_list:
-                if content_type == 'text':
-                    full_text.append(data)
-                elif content_type == 'image':
-                    image_count += 1
-                    print(f"Đã tìm thấy 1 ảnh, kích thước {len(data)} bytes.")
-            
-            self.results_textbox.insert("1.0", "".join(full_text))
-            print(f"Tổng cộng: {image_count} ảnh được tìm thấy.")
-            print("--- Hoàn tất trích xuất PDF ---\n")
-            
-        elif file_extension == ".epub":
-            # ... xử lý EPUB
-            pass
-        else:
-            # ... xử lý file không hỗ trợ
-            pass
+            self.after(100, lambda: self._display_results(content_list)) # Delay để frame kịp vẽ
