@@ -1,7 +1,7 @@
 # file-path: src/extract_app/modules/main_window.py
-# version: 3.0
+# version: 3.1
 # last-updated: 2025-09-17
-# description: Tái cấu trúc để dùng CTkScrollableFrame, hiển thị cả text và image.
+# description: Tích hợp EPUB parser vào luồng xử lý chính.
 
 import customtkinter as ctk
 from customtkinter import filedialog
@@ -10,7 +10,7 @@ from pathlib import Path
 from PIL import Image
 import io
 
-from ..core import pdf_parser
+from ..core import pdf_parser, epub_parser # Thêm epub_parser
 
 class MainWindow(ctk.CTk):
     def __init__(self):
@@ -21,6 +21,7 @@ class MainWindow(ctk.CTk):
         self._create_widgets()
 
     def _create_widgets(self):
+        # ... (không thay đổi)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
 
@@ -33,25 +34,23 @@ class MainWindow(ctk.CTk):
 
         self.selected_file_label = ctk.CTkLabel(input_frame, text="Chưa có file nào được chọn.", anchor="w")
         self.selected_file_label.grid(row=0, column=1, padx=10, pady=10, sticky="ew")
-
-        # Thay thế Textbox bằng ScrollableFrame
+        
         self.results_frame = ctk.CTkScrollableFrame(self)
         self.results_frame.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")
         self.results_frame.grid_columnconfigure(0, weight=1)
 
+
     def _clear_results_frame(self):
-        """Xóa tất cả các widget con khỏi khung kết quả."""
+        # ... (không thay đổi)
         for widget in self.results_frame.winfo_children():
             widget.destroy()
 
     def _display_results(self, content_list):
-        """Hiển thị danh sách nội dung (text/image) lên khung cuộn."""
+        # ... (không thay đổi)
         self._clear_results_frame()
         
-        # Lấy chiều rộng của frame để tính toán wraplength cho text
-        # Trừ đi một khoảng nhỏ để tránh tràn lề
         frame_width = self.results_frame.winfo_width() - 30 
-        if frame_width < 100: frame_width = 600 # Giá trị mặc định nếu frame chưa được vẽ
+        if frame_width < 100: frame_width = 600
 
         for content_type, data in content_list:
             if content_type == 'text':
@@ -79,9 +78,21 @@ class MainWindow(ctk.CTk):
         if not filepath: return
 
         self.selected_file_label.configure(text=filepath)
-        self._clear_results_frame() # Xóa kết quả cũ ngay lập tức
+        self._clear_results_frame()
 
+        content_list = []
         file_extension = Path(filepath).suffix.lower()
+
         if file_extension == ".pdf":
+            print("\n--- Bắt đầu trích xuất PDF ---")
             content_list = pdf_parser.parse_pdf(filepath)
-            self.after(100, lambda: self._display_results(content_list)) # Delay để frame kịp vẽ
+            print("--- Hoàn tất trích xuất PDF ---\n")
+        elif file_extension == ".epub":
+            print("\n--- Bắt đầu trích xuất EPUB ---")
+            content_list = epub_parser.parse_epub(filepath)
+            print("--- Hoàn tất trích xuất EPUB ---\n")
+        else:
+            print(f"Định dạng file '{file_extension}' không được hỗ trợ.")
+
+        if content_list:
+            self.after(100, lambda: self._display_results(content_list))
