@@ -1,7 +1,7 @@
 # file-path: src/extract_app/modules/main_window.py
-# version: 3.1
+# version: 3.2
 # last-updated: 2025-09-17
-# description: Tích hợp EPUB parser vào luồng xử lý chính.
+# description: Cập nhật để hiển thị nội dung được nhóm theo trang.
 
 import customtkinter as ctk
 from customtkinter import filedialog
@@ -10,7 +10,7 @@ from pathlib import Path
 from PIL import Image
 import io
 
-from ..core import pdf_parser, epub_parser # Thêm epub_parser
+from ..core import pdf_parser, epub_parser
 
 class MainWindow(ctk.CTk):
     def __init__(self):
@@ -24,54 +24,45 @@ class MainWindow(ctk.CTk):
         # ... (không thay đổi)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
-
         input_frame = ctk.CTkFrame(self)
         input_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
         input_frame.grid_columnconfigure(1, weight=1)
-
         select_button = ctk.CTkButton(input_frame, text="Chọn File Ebook...", command=self._on_select_file_button_click)
         select_button.grid(row=0, column=0, padx=10, pady=10)
-
         self.selected_file_label = ctk.CTkLabel(input_frame, text="Chưa có file nào được chọn.", anchor="w")
         self.selected_file_label.grid(row=0, column=1, padx=10, pady=10, sticky="ew")
-        
         self.results_frame = ctk.CTkScrollableFrame(self)
         self.results_frame.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")
         self.results_frame.grid_columnconfigure(0, weight=1)
 
-
     def _clear_results_frame(self):
-        # ... (không thay đổi)
         for widget in self.results_frame.winfo_children():
             widget.destroy()
 
-    def _display_results(self, content_list):
-        # ... (không thay đổi)
+    def _display_results(self, structured_content):
         self._clear_results_frame()
         
         frame_width = self.results_frame.winfo_width() - 30 
         if frame_width < 100: frame_width = 600
 
-        for content_type, data in content_list:
-            if content_type == 'text':
-                text_label = ctk.CTkLabel(
-                    self.results_frame, 
-                    text=data, 
-                    wraplength=frame_width, 
-                    justify="left",
-                    anchor="w"
-                )
-                text_label.grid(sticky="w", padx=5, pady=5)
-            elif content_type == 'image':
-                try:
-                    image_data = Image.open(io.BytesIO(data))
-                    ctk_image = ctk.CTkImage(light_image=image_data, size=image_data.size)
-                    
-                    image_label = ctk.CTkLabel(self.results_frame, image=ctk_image, text="")
-                    image_label.grid(pady=10)
-                except Exception as e:
-                    print(f"Lỗi khi hiển thị ảnh: {e}")
+        # structured_content bây giờ là list của list
+        for page_num, page_content in enumerate(structured_content):
+            # Thêm dải phân cách cho mỗi trang
+            separator = ctk.CTkLabel(self.results_frame, text=f"--- Trang {page_num + 1} ---", text_color="gray")
+            separator.grid(pady=(20, 10))
 
+            for content_type, data in page_content:
+                if content_type == 'text':
+                    text_label = ctk.CTkLabel(self.results_frame, text=data, wraplength=frame_width, justify="left", anchor="w")
+                    text_label.grid(sticky="w", padx=5, pady=5)
+                elif content_type == 'image':
+                    try:
+                        image_data = Image.open(io.BytesIO(data))
+                        ctk_image = ctk.CTkImage(light_image=image_data, size=image_data.size)
+                        image_label = ctk.CTkLabel(self.results_frame, image=ctk_image, text="")
+                        image_label.grid(pady=10)
+                    except Exception as e:
+                        print(f"Lỗi khi hiển thị ảnh: {e}")
 
     def _on_select_file_button_click(self):
         filepath = filedialog.askopenfilename(title="Chọn một file Ebook", filetypes=[("Ebook files", "*.pdf *.epub")])
@@ -84,15 +75,13 @@ class MainWindow(ctk.CTk):
         file_extension = Path(filepath).suffix.lower()
 
         if file_extension == ".pdf":
-            print("\n--- Bắt đầu trích xuất PDF ---")
             content_list = pdf_parser.parse_pdf(filepath)
-            print("--- Hoàn tất trích xuất PDF ---\n")
         elif file_extension == ".epub":
-            print("\n--- Bắt đầu trích xuất EPUB ---")
-            content_list = epub_parser.parse_epub(filepath)
-            print("--- Hoàn tất trích xuất EPUB ---\n")
-        else:
-            print(f"Định dạng file '{file_extension}' không được hỗ trợ.")
+            # Tạm thời gói kết quả EPUB vào một list lớn để tương thích
+            epub_content = epub_parser.parse_epub(filepath)
+            if epub_content:
+                content_list = [epub_content]
+        # ...
 
         if content_list:
             self.after(100, lambda: self._display_results(content_list))
