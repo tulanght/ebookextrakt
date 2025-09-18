@@ -1,7 +1,7 @@
 # file-path: src/extract_app/modules/main_window.py
-# version: 3.5
+# version: 3.6
 # last-updated: 2025-09-18
-# description: Cập nhật để hiển thị nội dung theo cấu trúc chương có tiêu đề.
+# description: Hiển thị anchor (đường dẫn) cho ảnh thay vì load ảnh thật.
 
 import customtkinter as ctk
 from customtkinter import filedialog
@@ -14,12 +14,13 @@ from ..core import pdf_parser, epub_parser
 class MainWindow(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("ExtractPDF-EPUB App")
+        self.title("ExtractPDF-EPUB App - Verification Tool") # Đổi tên để rõ vai trò
         self.geometry("800x600")
         sv_ttk.set_theme("light")
         self._create_widgets()
 
     def _create_widgets(self):
+        # ... (không thay đổi)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
         input_frame = ctk.CTkFrame(self)
@@ -54,15 +55,16 @@ class MainWindow(ctk.CTk):
                     text_label = ctk.CTkLabel(self.results_frame, text=data, wraplength=frame_width, justify="left", anchor="w")
                     text_label.grid(sticky="w", padx=5, pady=5)
                 elif content_type == 'image':
-                    try:
-                        image_data = Image.open(io.BytesIO(data))
-                        ctk_image = ctk.CTkImage(light_image=image_data, size=image_data.size)
-                        image_label = ctk.CTkLabel(self.results_frame, image=ctk_image, text="")
-                        image_label.grid(pady=10)
-                    except Exception as e:
-                        print(f"Lỗi khi hiển thị ảnh: {e}")
-
+                    # Logic hiển thị ảnh được CẬP NHẬT
+                    # Data bây giờ là đường dẫn (string), chúng ta chỉ hiển thị nó
+                    anchor_text = f"[IMAGE ANCHOR]: {data}"
+                    
+                    # Hiển thị anchor thay vì ảnh thật
+                    anchor_label = ctk.CTkLabel(self.results_frame, text=anchor_text, text_color="blue", anchor="w")
+                    anchor_label.grid(sticky="w", pady=5, padx=5)
+    
     def _on_select_file_button_click(self):
+        # ... (logic không đổi)
         filepath = filedialog.askopenfilename(title="Chọn một file Ebook", filetypes=[("Ebook files", "*.pdf *.epub")])
         if not filepath: return
         self.selected_file_label.configure(text=filepath)
@@ -72,7 +74,6 @@ class MainWindow(ctk.CTk):
         if file_extension == ".pdf":
             content_list = pdf_parser.parse_pdf(filepath)
         elif file_extension == ".epub":
-            # Tạm thời chưa xử lý EPUB theo cách mới
-            pass
+            pass 
         if content_list:
             self.after(100, lambda: self._display_results(content_list))
