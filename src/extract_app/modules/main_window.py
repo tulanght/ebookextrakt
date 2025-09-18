@@ -1,7 +1,7 @@
 # file-path: src/extract_app/modules/main_window.py
-# version: 3.2
-# last-updated: 2025-09-17
-# description: Cập nhật để hiển thị nội dung được nhóm theo trang.
+# version: 3.3
+# last-updated: 2025-09-18
+# description: Xử lý EPUB theo cấu trúc chương và tổng quát hóa dải phân cách.
 
 import customtkinter as ctk
 from customtkinter import filedialog
@@ -45,13 +45,12 @@ class MainWindow(ctk.CTk):
         frame_width = self.results_frame.winfo_width() - 30 
         if frame_width < 100: frame_width = 600
 
-        # structured_content bây giờ là list của list
-        for page_num, page_content in enumerate(structured_content):
-            # Thêm dải phân cách cho mỗi trang
-            separator = ctk.CTkLabel(self.results_frame, text=f"--- Trang {page_num + 1} ---", text_color="gray")
+        for section_num, section_content in enumerate(structured_content):
+            # Dùng nhãn "Phần" chung cho cả trang (PDF) và chương (EPUB)
+            separator = ctk.CTkLabel(self.results_frame, text=f"--- Phần {section_num + 1} ---", text_color="gray")
             separator.grid(pady=(20, 10))
 
-            for content_type, data in page_content:
+            for content_type, data in section_content:
                 if content_type == 'text':
                     text_label = ctk.CTkLabel(self.results_frame, text=data, wraplength=frame_width, justify="left", anchor="w")
                     text_label.grid(sticky="w", padx=5, pady=5)
@@ -77,11 +76,8 @@ class MainWindow(ctk.CTk):
         if file_extension == ".pdf":
             content_list = pdf_parser.parse_pdf(filepath)
         elif file_extension == ".epub":
-            # Tạm thời gói kết quả EPUB vào một list lớn để tương thích
-            epub_content = epub_parser.parse_epub(filepath)
-            if epub_content:
-                content_list = [epub_content]
-        # ...
-
+            # Bây giờ epub_parser đã trả về đúng cấu trúc, không cần gói tạm nữa
+            content_list = epub_parser.parse_epub(filepath)
+        
         if content_list:
             self.after(100, lambda: self._display_results(content_list))
