@@ -1,7 +1,7 @@
 # file-path: src/extract_app/modules/main_window.py
-# version: 3.3
+# version: 3.5
 # last-updated: 2025-09-18
-# description: Xử lý EPUB theo cấu trúc chương và tổng quát hóa dải phân cách.
+# description: Cập nhật để hiển thị nội dung theo cấu trúc chương có tiêu đề.
 
 import customtkinter as ctk
 from customtkinter import filedialog
@@ -9,7 +9,6 @@ import sv_ttk
 from pathlib import Path
 from PIL import Image
 import io
-
 from ..core import pdf_parser, epub_parser
 
 class MainWindow(ctk.CTk):
@@ -21,7 +20,6 @@ class MainWindow(ctk.CTk):
         self._create_widgets()
 
     def _create_widgets(self):
-        # ... (không thay đổi)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
         input_frame = ctk.CTkFrame(self)
@@ -41,16 +39,17 @@ class MainWindow(ctk.CTk):
 
     def _display_results(self, structured_content):
         self._clear_results_frame()
-        
         frame_width = self.results_frame.winfo_width() - 30 
         if frame_width < 100: frame_width = 600
 
-        for section_num, section_content in enumerate(structured_content):
-            # Dùng nhãn "Phần" chung cho cả trang (PDF) và chương (EPUB)
-            separator = ctk.CTkLabel(self.results_frame, text=f"--- Phần {section_num + 1} ---", text_color="gray")
+        for section_data in structured_content:
+            title = section_data.get('title', 'Không có tiêu đề')
+            content = section_data.get('content', [])
+
+            separator = ctk.CTkLabel(self.results_frame, text=f"--- {title} ---", text_color="gray", font=("", 14, "bold"))
             separator.grid(pady=(20, 10))
 
-            for content_type, data in section_content:
+            for content_type, data in content:
                 if content_type == 'text':
                     text_label = ctk.CTkLabel(self.results_frame, text=data, wraplength=frame_width, justify="left", anchor="w")
                     text_label.grid(sticky="w", padx=5, pady=5)
@@ -66,18 +65,14 @@ class MainWindow(ctk.CTk):
     def _on_select_file_button_click(self):
         filepath = filedialog.askopenfilename(title="Chọn một file Ebook", filetypes=[("Ebook files", "*.pdf *.epub")])
         if not filepath: return
-
         self.selected_file_label.configure(text=filepath)
         self._clear_results_frame()
-
         content_list = []
         file_extension = Path(filepath).suffix.lower()
-
         if file_extension == ".pdf":
             content_list = pdf_parser.parse_pdf(filepath)
         elif file_extension == ".epub":
-            # Bây giờ epub_parser đã trả về đúng cấu trúc, không cần gói tạm nữa
-            content_list = epub_parser.parse_epub(filepath)
-        
+            # Tạm thời chưa xử lý EPUB theo cách mới
+            pass
         if content_list:
             self.after(100, lambda: self._display_results(content_list))

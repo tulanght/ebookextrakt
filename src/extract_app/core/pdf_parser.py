@@ -1,47 +1,49 @@
 # file-path: src/extract_app/core/pdf_parser.py
-# version: 2.1
-# last-updated: 2025-09-17
-# description: Thay đổi cấu trúc trả về thành danh sách các trang (list of lists).
+# version: 4.0
+# last-updated: 2025-09-18
+# description: Tái cấu trúc lớn để phân tích PDF dựa trên Mục lục (Bookmarks).
 
 import fitz  # PyMuPDF
-from typing import List, Tuple, Any
+from typing import List, Dict, Any
 
-def parse_pdf(filepath: str) -> List[List[Tuple[str, Any]]]:
-    """
-    Mở một file PDF và trích xuất nội dung, nhóm theo từng trang.
-
-    Args:
-        filepath: Đường dẫn đến file PDF.
-
-    Returns:
-        Một danh sách các danh sách. Mỗi danh sách con chứa content tuples của một trang.
-        Ví dụ: [ [('text', 'page 1 text')], [('text', 'page 2 text'), ('image', b'...')] ]
-    """
-    all_pages_content = []
+def parse_pdf(filepath: str) -> List[Dict[str, Any]]:
+    structured_content = []
     try:
         doc = fitz.open(filepath)
-        
-        for page_num, page in enumerate(doc):
-            single_page_content = []
-            
-            # Thêm khối văn bản
-            page_text = page.get_text("text")
-            if page_text.strip():
-                single_page_content.append(('text', page_text))
+        toc = doc.get_toc()
 
-            # Thêm các khối hình ảnh
-            image_list = page.get_images(full=True)
-            for img_index, img in enumerate(image_list):
-                xref = img[0]
-                base_image = doc.extract_image(xref)
-                image_bytes = base_image["image"]
-                single_page_content.append(('image', image_bytes))
+        if not toc:
+            print("Cảnh báo: File PDF không có Mục lục. Không thể phân tích theo chương.")
+            return [{'title': 'Lỗi', 'content': [('text', 'File PDF này không chứa Mục lục (Bookmarks) để có thể phân tích theo chương.')]}]
+
+        toc.sort(key=lambda item: item[2])
+
+        for i, item in enumerate(toc):
+            level, title, start_page = item
+            start_page -= 1 
+
+            end_page = doc.page_count
+            if i + 1 < len(toc):
+                end_page = toc[i+1][2] - 1
+
+            chapter_content = []
+            for page_num in range(start_page, end_page):
+                page = doc.load_page(page_num)
+                
+                page_text = page.get_text("text")
+                if page_text.strip():
+                    chapter_content.append(('text', page_text))
+
+                for img in page.get_images(full=True):
+                    xref = img[0]
+                    base_image = doc.extract_image(xref)
+                    chapter_content.append(('image', base_image["image"]))
             
-            if single_page_content:
-                all_pages_content.append(single_page_content)
-        
+            if chapter_content:
+                structured_content.append({'title': title, 'content': chapter_content})
+
         doc.close()
-        return all_pages_content
+        return structured_content
     except Exception as e:
         print(f"Lỗi khi xử lý file PDF: {e}")
-        return [[('text', f"Không thể đọc file: {filepath}. Lỗi: {e}")]]
+        return [{'title': 'Lỗi', 'content': [('text', f"Lỗi: {e}")]}]
