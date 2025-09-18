@@ -1,7 +1,7 @@
 # file-path: src/extract_app/modules/main_window.py
-# version: 3.6
+# version: 3.7
 # last-updated: 2025-09-18
-# description: Hiển thị anchor (đường dẫn) cho ảnh thay vì load ảnh thật.
+# description: Kích hoạt lại epub_parser đã được nâng cấp.
 
 import customtkinter as ctk
 from customtkinter import filedialog
@@ -64,7 +64,6 @@ class MainWindow(ctk.CTk):
                     anchor_label.grid(sticky="w", pady=5, padx=5)
     
     def _on_select_file_button_click(self):
-        # ... (logic không đổi)
         filepath = filedialog.askopenfilename(title="Chọn một file Ebook", filetypes=[("Ebook files", "*.pdf *.epub")])
         if not filepath: return
         self.selected_file_label.configure(text=filepath)
@@ -74,6 +73,8 @@ class MainWindow(ctk.CTk):
         if file_extension == ".pdf":
             content_list = pdf_parser.parse_pdf(filepath)
         elif file_extension == ".epub":
-            pass 
+            # Kích hoạt lại epub_parser đã được nâng cấp
+            content_list = epub_parser.parse_epub(filepath)
+        
         if content_list:
             self.after(100, lambda: self._display_results(content_list))
