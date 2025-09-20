@@ -51,3 +51,5 @@ src/extract_app/
     2.  Tạo môi trường ảo: `python -m venv venv` và kích hoạt nó.
     3.  Cài đặt các thư viện cần thiết: `pip install -r requirements.txt`
     4.  Chạy ứng dụng: `python run.py`
+
+
