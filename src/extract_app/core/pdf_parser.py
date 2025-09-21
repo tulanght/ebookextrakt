@@ -1,66 +1,135 @@
-# file-path: src/extract_app/core/pdf_parser.py
-# version: 4.1
-# last-updated: 2025-09-18
-# description: Lưu ảnh ra thư mục tạm và trả về đường dẫn (anchor) thay vì data bytes.
+# file-path: src/extract_app/core/pdf_parser.py (HOÀN CHỈNH)
+# version: 6.1
+# last-updated: 2025-09-22
+# description: Hotfix - Đồng bộ cấu trúc dữ liệu trả về cho hình ảnh (dạng dictionary).
 
 import fitz
+import re
 from typing import List, Dict, Any
 from pathlib import Path
 
-def parse_pdf(filepath: str) -> List[Dict[str, Any]]:
-    structured_content = []
+def _parse_toc_from_text(doc) -> List:
+    """
+    Heuristic để quét các trang đầu và cố gắng phân tích mục lục từ text.
+    """
+    print("Đang thử phân tích Mục lục từ text...")
+    toc = []
+    # Biểu thức chính quy tìm kiếm (Tên chương) ... (Số trang)
+    toc_pattern = re.compile(r'(.+?)\s*[.\s]{3,}\s*(\d+)')
     
-    # Tạo thư mục tạm để lưu ảnh
+    scan_pages = min(10, doc.page_count)
+    for page_num in range(scan_pages):
+        page = doc.load_page(page_num)
+        text = page.get_text("text")
+        lines = text.split('\n')
+        for line in lines:
+            match = toc_pattern.match(line.strip())
+            if match:
+                title = match.group(1).strip()
+                page_number = int(match.group(2))
+                toc.append([1, title, page_number])
+    
+    if toc:
+        print(f"  -> Heuristic đã tìm thấy {len(toc)} mục từ text.")
+    else:
+        print("  -> Heuristic không tìm thấy mục lục nào từ text.")
+    return toc
+
+def parse_pdf(filepath: str) -> Dict[str, Any]:
+    """
+    Phân tích file PDF, trích xuất metadata và nội dung có cấu trúc.
+    """
+    results = {'metadata': {}, 'content': []}
     temp_image_dir = Path("temp/images")
     temp_image_dir.mkdir(parents=True, exist_ok=True)
-
+    
     try:
         doc = fitz.open(filepath)
+        
+        # 1. Trích xuất Metadata
+        meta = doc.metadata
+        results['metadata']['title'] = meta.get('title', Path(filepath).stem)
+        results['metadata']['author'] = meta.get('author', 'Không rõ')
+        
+        # 2. Trích xuất ảnh bìa
+        cover_path = ""
+        if doc.page_count > 0:
+            first_page_images = doc.load_page(0).get_images(full=True)
+            if first_page_images:
+                img_info = first_page_images[0]
+                xref = img_info[0]
+                base_image = doc.extract_image(xref)
+                image_bytes = base_image["image"]
+                image_ext = base_image["ext"]
+                
+                cover_filename = f"pdf_cover.{image_ext}"
+                image_path = temp_image_dir / cover_filename
+                with open(image_path, "wb") as f_image:
+                    f_image.write(image_bytes)
+                cover_path = str(image_path)
+        results['metadata']['cover_image_path'] = cover_path
+
+        # 3. Trích xuất Nội dung - Logic Thích ứng
         toc = doc.get_toc()
+        source = "Bookmarks"
 
         if not toc:
-            # ... (logic fallback không đổi)
-            return [{'title': 'Lỗi', 'content': [('text', 'File PDF này không chứa Mục lục.')]}]
+            toc = _parse_toc_from_text(doc)
+            source = "Text Heuristic"
 
+        if not toc:
+            print("Không tìm thấy Mục lục, sẽ chia theo từng trang.")
+            source = "Per-Page Splitting"
+            toc = [[1, f"Trang {i+1}", i+1] for i in range(doc.page_count)]
+
+        print(f"Đã xác định cấu trúc bằng phương pháp: {source}")
+        
+        content_list = []
         toc.sort(key=lambda item: item[2])
-
         for i, item in enumerate(toc):
             level, title, start_page = item
-            start_page -= 1 
+            start_page -= 1
+
             end_page = doc.page_count
             if i + 1 < len(toc):
-                end_page = toc[i+1][2] - 1
-            
+                next_start_page = toc[i+1][2] - 1
+                end_page = next_start_page if next_start_page > start_page else start_page + 1
+
             chapter_content = []
             for page_num in range(start_page, end_page):
+                if page_num >= doc.page_count: continue
                 page = doc.load_page(page_num)
                 
-                # Logic lấy text không đổi
                 page_text = page.get_text("text")
                 if page_text.strip():
                     chapter_content.append(('text', page_text))
 
-                # Logic lấy ảnh được CẬP NHẬT
                 for img_index, img in enumerate(page.get_images(full=True)):
                     xref = img[0]
                     base_image = doc.extract_image(xref)
                     image_bytes = base_image["image"]
                     image_ext = base_image["ext"]
                     
-                    # Lưu ảnh ra file tạm
-                    image_filename = f"img_p{page_num+1}_i{img_index}.{image_ext}"
+                    image_filename = f"pdf_p{page_num+1}_i{img_index}.{image_ext}"
                     image_path = temp_image_dir / image_filename
                     with open(image_path, "wb") as f_image:
                         f_image.write(image_bytes)
                     
-                    # Trả về đường dẫn (anchor) thay vì dữ liệu bytes
-                    chapter_content.append(('image', str(image_path)))
+                    # Đồng bộ cấu trúc dữ liệu trả về cho hình ảnh
+                    image_data = {
+                        'anchor': str(image_path),
+                        'caption': '' # PDF không có cấu trúc caption chuẩn
+                    }
+                    chapter_content.append(('image', image_data))
             
             if chapter_content:
-                structured_content.append({'title': title, 'content': chapter_content})
-
+                content_list.append({'title': title, 'content': chapter_content})
+        
+        results['content'] = content_list
         doc.close()
-        return structured_content
+        return results
+        
     except Exception as e:
-        print(f"Lỗi khi xử lý file PDF: {e}")
-        return [{'title': 'Lỗi', 'content': [('text', f"Lỗi: {e}")]}]
+        import traceback
+        traceback.print_exc()
+        return {'metadata': {}, 'content': [{'title': 'Lỗi', 'content': [('text', f"Lỗi: {e}")]}]}
