@@ -1,7 +1,7 @@
-# file-path: src/extract_app/modules/main_window.py (HOÀN CHỈNH)
-# version: 7.1
-# last-updated: 2025-09-21
-# description: Hotfix - Thêm màn hình loading chuyên dụng thay cho màn hình chào.
+# file-path: src/extract_app/modules/main_window.py
+# version: 7.2
+# last-updated: 2025-09-22
+# description: Tích hợp content_structurer để tinh chỉnh kết quả PDF.
 
 import customtkinter as ctk
 from customtkinter import filedialog
@@ -16,7 +16,7 @@ import subprocess
 import tkinter.messagebox as messagebox
 import time
 
-from ..core import pdf_parser, epub_parser, storage_handler
+from ..core import pdf_parser, epub_parser, storage_handler, content_structurer # Thêm content_structurer
 
 class MainWindow(ctk.CTk):
     def __init__(self):
@@ -162,16 +162,26 @@ class MainWindow(ctk.CTk):
     def _display_featherweight_content(self):
         self._clear_results_frame()
         content_list = self.current_results.get('content', [])
+        
         for section_data in content_list:
             title = section_data.get('title', 'Không có tiêu đề')
             content = section_data.get('content', [])
             separator = ctk.CTkLabel(self.content_panel, text=f"--- {title} ---", text_color="gray", font=("", 14, "bold"))
             separator.pack(fill="x", pady=(20, 10), padx=10)
+            
             total_words = 0
             image_count = 0
             for content_type, data in content:
-                if content_type == 'text': total_words += len(data.split())
-                elif content_type == 'image': image_count += 1
+                if content_type == 'text':
+                    # --- SỬA LỖI TẠI ĐÂY ---
+                    # Kiểm tra nếu data là dict, lấy key 'content' để đếm từ
+                    if isinstance(data, dict):
+                        total_words += len(data.get('content', '').split())
+                    elif isinstance(data, str): # Fallback cho các parser cũ hơn
+                        total_words += len(data.split())
+                elif content_type == 'image':
+                    image_count += 1
+            
             summary_text = f"[Nội dung chương ({total_words} từ, {image_count} hình ảnh)]"
             summary_label = ctk.CTkLabel(self.content_panel, text=summary_text, anchor="w", justify="left")
             summary_label.pack(fill="x", padx=10, pady=5)
@@ -202,13 +212,36 @@ class MainWindow(ctk.CTk):
         self.after(100, self._check_results_queue)
 
     def _worker_parse_file(self, filepath, q):
+        """Hàm này chạy trên luồng riêng để phân tích file."""
+        print(f"[{threading.current_thread().name}] Bắt đầu phân tích file...")
         file_extension = Path(filepath).suffix.lower()
         results = {}
+        
         if file_extension == ".pdf":
-            results = pdf_parser.parse_pdf(filepath)
+            # B1: Parser lấy dữ liệu thô chi tiết
+            raw_results = pdf_parser.parse_pdf(filepath)
+            
+            # B2: Structurer tinh chỉnh lại dữ liệu, tách bài viết
+            structured_articles = []
+            for chapter in raw_results.get('content', []):
+                # Tách các bài viết con từ mỗi chương
+                articles_in_chapter = content_structurer.structure_pdf_articles(chapter['content'])
+                for article in articles_in_chapter:
+                    # Tạo một "chương" mới cho mỗi bài viết đã tách
+                    structured_articles.append({
+                        'title': f"{chapter['title']} - {article['subtitle']}",
+                        'content': article['content']
+                    })
+            
+            # Cập nhật lại kết quả cuối cùng
+            raw_results['content'] = structured_articles
+            results = raw_results
+
         elif file_extension == ".epub":
             results = epub_parser.parse_epub(filepath)
+        
         q.put(results)
+        print(f"[{threading.current_thread().name}] Phân tích xong, đã gửi kết quả.")
 
     def _check_results_queue(self):
         try:

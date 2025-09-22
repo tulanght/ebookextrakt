@@ -1,7 +1,7 @@
 # file-path: src/extract_app/core/pdf_parser.py (HOÀN CHỈNH)
-# version: 6.1
+# version: 6.2
 # last-updated: 2025-09-22
-# description: Hotfix - Đồng bộ cấu trúc dữ liệu trả về cho hình ảnh (dạng dictionary).
+# description: Hotfix - Nâng cấp để trích xuất text blocks với thông tin chi tiết (font size).
 
 import fitz
 import re
@@ -9,12 +9,9 @@ from typing import List, Dict, Any
 from pathlib import Path
 
 def _parse_toc_from_text(doc) -> List:
-    """
-    Heuristic để quét các trang đầu và cố gắng phân tích mục lục từ text.
-    """
+    # ... (Hàm này không đổi) ...
     print("Đang thử phân tích Mục lục từ text...")
     toc = []
-    # Biểu thức chính quy tìm kiếm (Tên chương) ... (Số trang)
     toc_pattern = re.compile(r'(.+?)\s*[.\s]{3,}\s*(\d+)')
     
     scan_pages = min(10, doc.page_count)
@@ -29,16 +26,11 @@ def _parse_toc_from_text(doc) -> List:
                 page_number = int(match.group(2))
                 toc.append([1, title, page_number])
     
-    if toc:
-        print(f"  -> Heuristic đã tìm thấy {len(toc)} mục từ text.")
-    else:
-        print("  -> Heuristic không tìm thấy mục lục nào từ text.")
+    if toc: print(f"  -> Heuristic đã tìm thấy {len(toc)} mục từ text.")
+    else: print("  -> Heuristic không tìm thấy mục lục nào từ text.")
     return toc
 
 def parse_pdf(filepath: str) -> Dict[str, Any]:
-    """
-    Phân tích file PDF, trích xuất metadata và nội dung có cấu trúc.
-    """
     results = {'metadata': {}, 'content': []}
     temp_image_dir = Path("temp/images")
     temp_image_dir.mkdir(parents=True, exist_ok=True)
@@ -46,12 +38,10 @@ def parse_pdf(filepath: str) -> Dict[str, Any]:
     try:
         doc = fitz.open(filepath)
         
-        # 1. Trích xuất Metadata
+        # ... (Phần trích xuất metadata và ảnh bìa không đổi) ...
         meta = doc.metadata
         results['metadata']['title'] = meta.get('title', Path(filepath).stem)
         results['metadata']['author'] = meta.get('author', 'Không rõ')
-        
-        # 2. Trích xuất ảnh bìa
         cover_path = ""
         if doc.page_count > 0:
             first_page_images = doc.load_page(0).get_images(full=True)
@@ -59,29 +49,23 @@ def parse_pdf(filepath: str) -> Dict[str, Any]:
                 img_info = first_page_images[0]
                 xref = img_info[0]
                 base_image = doc.extract_image(xref)
-                image_bytes = base_image["image"]
-                image_ext = base_image["ext"]
-                
+                image_bytes = base_image["image"]; image_ext = base_image["ext"]
                 cover_filename = f"pdf_cover.{image_ext}"
                 image_path = temp_image_dir / cover_filename
-                with open(image_path, "wb") as f_image:
-                    f_image.write(image_bytes)
+                with open(image_path, "wb") as f_image: f_image.write(image_bytes)
                 cover_path = str(image_path)
         results['metadata']['cover_image_path'] = cover_path
 
-        # 3. Trích xuất Nội dung - Logic Thích ứng
+        # ... (Phần logic chọn ToC không đổi) ...
         toc = doc.get_toc()
         source = "Bookmarks"
-
         if not toc:
             toc = _parse_toc_from_text(doc)
             source = "Text Heuristic"
-
         if not toc:
             print("Không tìm thấy Mục lục, sẽ chia theo từng trang.")
             source = "Per-Page Splitting"
             toc = [[1, f"Trang {i+1}", i+1] for i in range(doc.page_count)]
-
         print(f"Đã xác định cấu trúc bằng phương pháp: {source}")
         
         content_list = []
@@ -89,7 +73,6 @@ def parse_pdf(filepath: str) -> Dict[str, Any]:
         for i, item in enumerate(toc):
             level, title, start_page = item
             start_page -= 1
-
             end_page = doc.page_count
             if i + 1 < len(toc):
                 next_start_page = toc[i+1][2] - 1
@@ -100,26 +83,30 @@ def parse_pdf(filepath: str) -> Dict[str, Any]:
                 if page_num >= doc.page_count: continue
                 page = doc.load_page(page_num)
                 
-                page_text = page.get_text("text")
-                if page_text.strip():
-                    chapter_content.append(('text', page_text))
-
+                # --- LOGIC TRÍCH XUẤT TEXT CHI TIẾT MỚI ---
+                blocks = page.get_text("dict")["blocks"]
+                for block in blocks:
+                    if block['type'] == 0: # 0 là block text
+                        for line in block["lines"]:
+                            for span in line["spans"]:
+                                if span['text'].strip(): # Chỉ lấy các span có nội dung
+                                    text_data = {
+                                        'content': span['text'],
+                                        'size': round(span['size'], 2),
+                                        'font': span['font']
+                                    }
+                                    chapter_content.append(('text', text_data))
+                
+                # Logic trích xuất ảnh không đổi
                 for img_index, img in enumerate(page.get_images(full=True)):
                     xref = img[0]
                     base_image = doc.extract_image(xref)
                     image_bytes = base_image["image"]
                     image_ext = base_image["ext"]
-                    
                     image_filename = f"pdf_p{page_num+1}_i{img_index}.{image_ext}"
                     image_path = temp_image_dir / image_filename
-                    with open(image_path, "wb") as f_image:
-                        f_image.write(image_bytes)
-                    
-                    # Đồng bộ cấu trúc dữ liệu trả về cho hình ảnh
-                    image_data = {
-                        'anchor': str(image_path),
-                        'caption': '' # PDF không có cấu trúc caption chuẩn
-                    }
+                    with open(image_path, "wb") as f_image: f_image.write(image_bytes)
+                    image_data = {'anchor': str(image_path), 'caption': ''}
                     chapter_content.append(('image', image_data))
             
             if chapter_content:
