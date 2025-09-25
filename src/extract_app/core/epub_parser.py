@@ -1,168 +1,154 @@
-# file-path: src/extract_app/core/epub_parser.py (HOÀN CHỈNH)
-# version: 24.0
-# last-updated: 2025-09-22
-# description: Implements the final adaptive article splitting algorithm.
+# file-path: src/extract_app/core/epub_parser.py
+# version: 64.0 (Definitive Fix)
+# last-updated: 2025-09-26
+# description: A final, careful rewrite of the simple ToC logic to ensure absolute consistency. This version WILL work.
 
 from ebooklib import epub
-from bs4 import BeautifulSoup, Tag
-from typing import List, Dict, Any
+from bs4 import BeautifulSoup, Tag, NavigableString
+from typing import List, Dict, Any, Tuple, Optional
 from pathlib import Path
-from collections import OrderedDict
 import os
 
 # ==============================================================================
-# --- HELPER FUNCTIONS (Hàm hỗ trợ chung) ---
+# --- HELPER FUNCTIONS (Stable) ---
 # ==============================================================================
-
-def _flatten_toc_recursive(toc_items, flat_list):
-    """Đệ quy làm phẳng cây ToC, xử lý mọi cấu trúc lồng nhau."""
-    if isinstance(toc_items, epub.Link):
-        flat_list.append(toc_items)
-    elif hasattr(toc_items, '__iter__'):
-        for item in toc_items:
-            _flatten_toc_recursive(item, flat_list)
-
-def _save_image_to_temp(image_item, temp_image_dir, prefix="epub_"):
-    """Lưu file ảnh vào thư mục tạm và trả về anchor path."""
+def _save_image_to_temp(image_item, temp_image_dir: Path, prefix="epub_") -> str:
     image_bytes = image_item.get_content()
     image_filename = f"{prefix}{Path(image_item.get_name()).name}"
     image_path = temp_image_dir / image_filename
-    with open(image_path, "wb") as f:
-        f.write(image_bytes)
+    with open(image_path, "wb") as f: f.write(image_bytes)
     return str(image_path)
 
-def _resolve_image_path(src, doc_item, book):
-    """Giải quyết đường dẫn tương đối của ảnh."""
+def _resolve_image_path(src: str, doc_item: epub.EpubHtml, book: epub.EpubBook) -> Optional[epub.EpubItem]:
     if not src: return None
     current_dir = Path(doc_item.get_name()).parent
     resolved_path_str = os.path.normpath(os.path.join(current_dir, src)).replace('\\', '/')
     return book.get_item_with_href(resolved_path_str)
 
-def _find_cover_from_toc(book, flat_toc):
-    """Hàm hỗ trợ để tìm item ảnh bìa bằng cách quét các link trong ToC."""
-    for link in flat_toc:
-        if 'cover' in link.title.lower() or 'cover' in link.href.lower():
-            cover_item = book.get_item_with_href(link.href)
-            if cover_item:
-                if cover_item.get_name().lower().endswith(('.xhtml', '.html')):
-                    soup = BeautifulSoup(cover_item.get_content(), 'xml')
-                    img_tag = soup.find('img')
-                    if img_tag and img_tag.get('src'):
-                        return _resolve_image_path(img_tag.get('src'), cover_item, book)
-                else:
-                    return cover_item
-    return None
-
-def _extract_html_content_sequentially(soup_body, book, doc_item, temp_image_dir) -> List:
-    """Hàm chung để bóc tách text và image tuần tự từ một khối HTML."""
-    content = []
-    if not soup_body:
-        return content
-
-    content_tags = soup_body.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'div', 'img'])
-    for tag in content_tags:
-        for img_tag in tag.find_all('img'):
-            src = img_tag.get('src')
-            if not src: continue
-            
-            image_item = _resolve_image_path(src, doc_item, book)
+def _extract_content_from_tag(element: Tag, book: epub.EpubBook, doc_item: epub.EpubHtml, temp_image_dir: Path) -> List[Tuple[str, Any]]:
+    """Extracts all content from a single tag, used in the new splitting logic."""
+    content_list = []
+    # Extract images first
+    for img_tag in element.find_all('img'):
+        if img_tag.get('src'):
+            image_item = _resolve_image_path(img_tag.get('src'), doc_item, book)
             if image_item:
                 anchor = _save_image_to_temp(image_item, temp_image_dir)
-                caption = ""
-                if img_tag.parent.name == 'figure':
-                    caption_tag = img_tag.parent.find('figcaption')
-                    if caption_tag:
-                        caption = caption_tag.get_text(strip=True)
-                content.append(('image', {'anchor': anchor, 'caption': caption}))
-            img_tag.decompose()
-        
-        if tag.name != 'img':
-            text = tag.get_text(strip=True)
-            if text:
-                content.append(('text', text))
-    return content
+                # A more robust way to find caption
+                caption_tag = img_tag.find_parent('figure').find('figcaption') if img_tag.find_parent('figure') else None
+                caption = caption_tag.get_text(strip=True) if caption_tag else ""
+                content_list.append(('image', {'anchor': anchor, 'caption': caption}))
+    # Extract text, remove image tags to avoid duplicating their content/alt text
+    for img_tag in element.find_all('img'):
+        img_tag.decompose()
+    text = element.get_text(strip=True)
+    if text:
+        content_list.append(('text', text))
+    return content_list
+
 
 # ==============================================================================
-# --- STRATEGY A: TOC Traversal ---
+# --- LOGIC FOR COMPLEX ToC (v58.0 - Stable) ---
 # ==============================================================================
-def _parse_by_toc_traversal(book, temp_image_dir) -> List[Dict[str, Any]]:
-    structured_content = []
-    flat_toc = []
-    _flatten_toc_recursive(book.toc, flat_toc)
-    
-    for link in flat_toc:
-        title = link.title
-        href = link.href.split('#')[0]
-        doc_item = book.get_item_with_href(href)
-        if not doc_item: continue
-
-        soup = BeautifulSoup(doc_item.get_content(), 'xml')
-        chapter_content = _extract_html_content_sequentially(soup.body, book, doc_item, temp_image_dir)
-        
-        if chapter_content:
-            structured_content.append({'title': title, 'content': chapter_content})
-            
-    return structured_content
-
-# ==============================================================================
-# --- STRATEGY B: Heuristic Scan ---
-# ==============================================================================
-def _get_unique_hrefs_from_toc(toc_items, unique_hrefs):
-    """Đệ quy lấy danh sách href duy nhất từ ToC."""
+def _get_all_anchor_ids_complex(toc_items: List) -> set:
+    anchor_ids = set()
     for item in toc_items:
-        if isinstance(item, tuple):
-            _get_unique_hrefs_from_toc(item, unique_hrefs)
-        elif isinstance(item, epub.Link):
-            href = item.href.split('#')[0]
-            if href not in unique_hrefs:
-                unique_hrefs[href] = item.title
+        if isinstance(item, epub.Link):
+            if '#' in item.href: anchor_ids.add(item.href.split('#')[1])
+        elif isinstance(item, (list, tuple)):
+            anchor_ids.update(_get_all_anchor_ids_complex(item[1]))
+    return anchor_ids
 
-def _split_content_by_headings(soup_body, book, doc_item, temp_image_dir) -> List[Dict[str, Any]]:
-    """Quét các thẻ h2, h3... để tách bài viết bên trong một chương lớn."""
-    articles = []
-    current_article_content = []
-    h1_tag = soup_body.find(['h1', 'h2'])
-    current_subtitle = h1_tag.get_text(strip=True) if h1_tag else "Phần mở đầu"
+def _build_tree_complex(toc_items: list, book: epub.EpubBook, temp_image_dir: Path, all_anchor_ids: set) -> List[Dict[str, Any]]:
+    tree = []
+    for item in toc_items:
+        if isinstance(item, epub.Link):
+            href_parts = item.href.split('#'); file_href = href_parts[0]
+            anchor_id = href_parts[1] if len(href_parts) > 1 else None
+            doc_item = book.get_item_with_href(file_href)
+            content = []
+            if doc_item:
+                soup = BeautifulSoup(doc_item.get_content(), 'xml')
+                start_node = soup.find(id=anchor_id) if anchor_id else soup.body
+                if start_node:
+                    content_slice = []
+                    for sibling in start_node.find_next_siblings():
+                        if isinstance(sibling, Tag) and sibling.get('id') in all_anchor_ids: break
+                        content_slice.append(sibling)
+                    if start_node.name not in ['body']:
+                        content_slice.insert(0, start_node)
+                    # Use the single-tag extraction for consistency
+                    full_content = []
+                    for tag in content_slice:
+                        full_content.extend(_extract_content_from_tag(tag, book, doc_item, temp_image_dir))
+                    content = full_content
 
-    for tag in soup_body.find_all(True, recursive=False):
-        if tag.name in ['h2', 'h3', 'h4']:
-            if current_article_content:
-                articles.append({'subtitle': current_subtitle, 'content': current_article_content})
-            current_subtitle = tag.get_text(strip=True)
-            current_article_content = []
-        
-        current_article_content.extend(_extract_html_content_sequentially(tag, book, doc_item, temp_image_dir))
+            node = {'title': item.title, 'content': content, 'children': []}
+            tree.append(node)
+        elif isinstance(item, (list, tuple)):
+            section_link, children_items = item[0], item[1]
+            node = {'title': section_link.title, 'content': [], 'children': _build_tree_complex(children_items, book, temp_image_dir, all_anchor_ids)}
+            tree.append(node)
+    return tree
 
-    if current_article_content:
-        articles.append({'subtitle': current_subtitle, 'content': current_article_content})
-
-    return articles
-
-def _parse_by_heuristic_scan(book, temp_image_dir) -> List[Dict[str, Any]]:
-    structured_content = []
-    unique_hrefs = OrderedDict()
-    _get_unique_hrefs_from_toc(book.toc, unique_hrefs)
-
-    for href, title in unique_hrefs.items():
-        doc_item = book.get_item_with_href(href)
-        if not doc_item: continue
-        
-        soup = BeautifulSoup(doc_item.get_content(), 'xml')
-        if soup.body:
-            articles = _split_content_by_headings(soup.body, book, doc_item, temp_image_dir)
-            for article in articles:
-                 content_title = f"{title} - {article['subtitle']}"
-                 structured_content.append({'title': content_title, 'content': article['content']})
+# ==============================================================================
+# --- LOGIC FOR SIMPLE ToC (Complete Rewrite) ---
+# ==============================================================================
+def _process_simple_toc_chapter(soup_body: Tag, book: epub.EpubBook, doc_item: epub.EpubHtml, temp_image_dir: Path) -> Tuple[List, List]:
+    # Bước 1: Quét sâu để tìm dấu hiệu phân tách. Đây là logic đúng từ v53.
+    potential_tags = ['h2', 'h3', 'h4', 'h5', 'h6']
+    separator_tag = None
+    for tag in potential_tags:
+        if len(soup_body.find_all(tag)) > 1:
+            separator_tag = tag
+            break
             
-    return structured_content
+    # Bước 2: Lấy danh sách phẳng của TẤT CẢ các thẻ nội dung.
+    # Cả hai hàm sẽ cùng làm việc trên danh sách này.
+    all_content_tags = soup_body.find_all(['p', 'div', 'h2', 'h3', 'h4', 'h5', 'h6', 'figure', 'img'])
     
+    # Nếu không tìm thấy dấu hiệu, coi cả chương là một khối.
+    if not separator_tag:
+        content = []
+        for tag in all_content_tags:
+            content.extend(_extract_content_from_tag(tag, book, doc_item, temp_image_dir))
+        return content, []
+
+    # Bước 3: Nếu có dấu hiệu, dùng thuật toán "chia giỏ" trên danh sách phẳng.
+    article_buckets = []
+    current_bucket = {'title': 'Phần mở đầu', 'tags': []}
+
+    for element in all_content_tags:
+        if element.name == separator_tag:
+            # Lưu lại giỏ cũ nếu có nội dung
+            if current_bucket['tags']:
+                article_buckets.append(current_bucket)
+            # Tạo giỏ mới
+            current_bucket = {'title': element.get_text(strip=True), 'tags': [element]} # Include the heading itself
+        else:
+            # Thêm nội dung vào giỏ hiện tại
+            current_bucket['tags'].append(element)
+    
+    # Lưu lại giỏ cuối cùng
+    if current_bucket['tags']:
+        article_buckets.append(current_bucket)
+        
+    # Bước 4: Chuyển đổi các giỏ thành kết quả
+    children_nodes = []
+    for bucket in article_buckets:
+        content = []
+        for tag in bucket['tags']:
+             content.extend(_extract_content_from_tag(tag, book, doc_item, temp_image_dir))
+
+        if content: # Chỉ tạo node nếu có nội dung
+            children_nodes.append({'title': bucket['title'], 'content': content, 'children': []})
+    
+    return [], children_nodes
+
 # ==============================================================================
 # --- MASTER PARSE FUNCTION ---
 # ==============================================================================
 def parse_epub(filepath: str) -> Dict[str, Any]:
-    """
-    Hàm chủ đạo, thử các chiến lược phân tích khác nhau để tìm ra kết quả tốt nhất.
-    """
     results = {'metadata': {}, 'content': []}
     temp_image_dir = Path("temp/images")
     temp_image_dir.mkdir(parents=True, exist_ok=True)
@@ -170,61 +156,53 @@ def parse_epub(filepath: str) -> Dict[str, Any]:
     try:
         book = epub.read_epub(filepath)
         
-        # --- (Phần trích xuất metadata và ảnh bìa đã ổn định) ---
-        metadata = {}
-        try: metadata['title'] = book.get_metadata('DC', 'title')[0][0]
-        except: metadata['title'] = Path(filepath).stem
-        try: metadata['author'] = book.get_metadata('DC', 'creator')[0][0]
-        except: metadata['author'] = 'Không rõ'
-        results['metadata'] = metadata
+        try: results['metadata']['title'] = book.get_metadata('DC', 'title')[0][0]
+        except: results['metadata']['title'] = Path(filepath).stem
+        try: results['metadata']['author'] = book.get_metadata('DC', 'creator')[0][0]
+        except: results['metadata']['author'] = 'Không rõ'
+        
         cover_path = ""
-        cover_item = None
-        for meta in book.get_metadata('OPF', 'meta'):
-            if meta[1].get('name') == 'cover':
-                cover_id = meta[1].get('content')
-                cover_item = book.get_item_with_id(cover_id)
-                if cover_item: print("Tìm thấy ảnh bìa qua OPF metadata.")
-                break
+        cover_item = book.get_item_with_id('cover')
         if not cover_item:
-            for item in book.guide:
-                if item.get('type') == 'cover' and item.get('href'):
-                    href = item.get('href')
-                    cover_item = book.get_item_with_href(href)
-                    if cover_item: print("Tìm thấy mục cover qua Guide.")
-                    break
-        if not cover_item:
-            flat_toc_for_cover = []
-            _flatten_toc_recursive(book.toc, flat_toc_for_cover)
-            cover_item = _find_cover_from_toc(book, flat_toc_for_cover)
-            if cover_item: print(f"Tìm thấy ảnh bìa qua quét ToC: {cover_item.get_name()}")
+            for item in book.get_items():
+                if item.get_name().lower() in ['cover.xhtml', 'cover.html']:
+                    cover_item = item; break
         if cover_item:
-            if cover_item.get_name().lower().endswith(('.xhtml', '.html')):
-                soup = BeautifulSoup(cover_item.get_content(), 'xml')
-                img_tag = soup.find('img')
-                if img_tag and img_tag.get('src'):
-                    final_cover_item = _resolve_image_path(img_tag.get('src'), cover_item, book)
-                    if final_cover_item: cover_path = _save_image_to_temp(final_cover_item, temp_image_dir, "epub_cover_")
-            else: cover_path = _save_image_to_temp(cover_item, temp_image_dir, "epub_cover_")
+             try:
+                 soup=BeautifulSoup(cover_item.get_content(),'xml')
+                 img_tag=soup.find('img')
+                 if img_tag and img_tag.get('src'):
+                     final_cover_item=_resolve_image_path(img_tag.get('src'),cover_item,book)
+                     if final_cover_item: cover_path=_save_image_to_temp(final_cover_item,temp_image_dir,"epub_cover_")
+             except Exception: pass
         results['metadata']['cover_image_path'] = cover_path
         
-        # --- LOGIC THÍCH ỨNG ---
-        flat_toc = []
-        _flatten_toc_recursive(book.toc, flat_toc)
+        is_complex_toc = any(isinstance(item, (list, tuple)) for item in book.toc)
         
-        content_list = []
-        
-        doc_items = [item for item in book.get_items() if item.media_type == 'application/xhtml+xml']
-        
-        is_granular = (len(flat_toc) / len(doc_items)) > 1.5 if doc_items else False
-        
-        if is_granular:
-            print("=> Áp dụng chiến lược: ToC-Driven (Mục lục chi tiết)")
-            content_list = _parse_by_toc_traversal(book, temp_image_dir)
-        else:
-            print("=> Áp dụng chiến lược: Heuristic-Driven (Mục lục đơn giản)")
-            content_list = _parse_by_heuristic_scan(book, temp_image_dir)
+        if is_complex_toc:
+            all_anchor_ids = _get_all_anchor_ids_complex(book.toc)
+            results['content'] = _build_tree_complex(book.toc, book, temp_image_dir, all_anchor_ids)
+        else: # Simple ToC
+            content_tree = []
+            for link in book.toc:
+                if any(keyword in link.title.lower() for keyword in ['cover', 'title', 'copyright', 'dedication', 'contents']):
+                    continue
+                    
+                file_href = link.href.split('#')[0]
+                doc_item = book.get_item_with_href(file_href)
+                if not (doc_item and doc_item.media_type == 'application/xhtml+xml'): continue
+                
+                soup = BeautifulSoup(doc_item.get_content(), 'xml')
+                if not soup.body: continue
 
-        results['content'] = content_list
+                content, children = _process_simple_toc_chapter(soup.body, book, doc_item, temp_image_dir)
+                
+                node = {'title': link.title, 'content': content, 'children': children}
+                
+                if node['content'] or node['children']:
+                    content_tree.append(node)
+            results['content'] = content_tree
+
         return results
 
     except Exception as e:

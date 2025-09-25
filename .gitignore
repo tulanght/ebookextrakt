@@ -24,5 +24,8 @@ Thumbs.db
 
 # Temp files
 temp/
-
 Output/
+
+# Log files
+*.txt
+*.log
