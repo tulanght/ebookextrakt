@@ -1,17 +1,27 @@
 # file-path: src/extract_app/core/epub_parsers/anchor_based_parser.py
-# version: 1.0
+# version: 1.1 (Pylint Compliance)
 # last-updated: 2025-09-26
-# description: A dedicated parser for complex, anchor-based, nested ToC structures.
+# description: Cleans up the anchor-based parser module to meet Pylint standards.
 
-from ebooklib import epub
-from bs4 import BeautifulSoup, Tag
-from typing import List, Dict, Any
-from pathlib import Path
+"""
+Parser for EPUB files with a complex, nested, anchor-based ToC structure.
+
+This module is designed to handle Ebooks where the Table of Contents (ToC)
+uses hrefs with anchors (e.g., 'chapter1.xhtml#section2') to define a deep,
+hierarchical structure.
+"""
+
 import os
-# --- HELPER FUNCTIONS (Copied from main parser for independence) ---
+from pathlib import Path
+from typing import List, Dict, Any
 
+from bs4 import BeautifulSoup, Tag
+from ebooklib import epub
+
+
+# --- HELPER FUNCTIONS ---
 def _save_image_to_temp(image_item, temp_image_dir: Path, prefix="epub_") -> str:
-    # ... (Nội dung hàm này giữ nguyên như trong epub_parser.py v65.0)
+    """Saves an image item to a temporary directory and returns its path."""
     image_bytes = image_item.get_content()
     image_filename = f"{prefix}{Path(image_item.get_name()).name}"
     image_path = temp_image_dir / image_filename
@@ -19,32 +29,43 @@ def _save_image_to_temp(image_item, temp_image_dir: Path, prefix="epub_") -> str
         f.write(image_bytes)
     return str(image_path)
 
+
 def _resolve_image_path(src: str, doc_item: epub.EpubHtml, book: epub.EpubBook):
-    # ... (Nội dung hàm này giữ nguyên như trong epub_parser.py v65.0)
-    if not src: return None
+    """Resolves the absolute path of an image given its relative src."""
+    if not src:
+        return None
     current_dir = Path(doc_item.get_name()).parent
     resolved_path_str = os.path.normpath(os.path.join(current_dir, src)).replace('\\', '/')
     return book.get_item_with_href(resolved_path_str)
 
-def _extract_content_from_tag_list(tags: List[Tag], book: epub.EpubBook, doc_item: epub.EpubHtml, temp_image_dir: Path) -> List:
-    # ... (Nội dung hàm này giữ nguyên như trong epub_parser.py v65.0)
+
+def _extract_content_from_tag_list(
+    tags: List[Tag], book: epub.EpubBook, doc_item: epub.EpubHtml, temp_image_dir: Path
+) -> List:
+    """Extracts text and image data from a list of BeautifulSoup tags."""
     content_list = []
     for element in tags:
-        if not isinstance(element, Tag): continue
+        if not isinstance(element, Tag):
+            continue
         for img_tag in element.find_all('img'):
             if img_tag.get('src'):
                 image_item = _resolve_image_path(img_tag.get('src'), doc_item, book)
                 if image_item:
                     anchor = _save_image_to_temp(image_item, temp_image_dir)
-                    caption_tag = img_tag.find_parent('figure').find('figcaption') if img_tag.find_parent('figure') else None
+                    caption_tag = (img_tag.find_parent('figure').find('figcaption')
+                                 if img_tag.find_parent('figure') else None)
                     caption = caption_tag.get_text(strip=True) if caption_tag else ""
                     content_list.append(('image', {'anchor': anchor, 'caption': caption}))
+        # Extract text only if the element itself is not a figure or image container
         if element.name not in ['figure', 'img']:
-             text = element.get_text(strip=True)
-             if text: content_list.append(('text', text))
+            text = element.get_text(strip=True)
+            if text:
+                content_list.append(('text', text))
     return content_list
 
+
 def _get_all_anchor_ids(toc_items: List) -> set:
+    """Recursively collects all anchor IDs from the ToC."""
     anchor_ids = set()
     for item in toc_items:
         if isinstance(item, epub.Link):
@@ -54,7 +75,12 @@ def _get_all_anchor_ids(toc_items: List) -> set:
             anchor_ids.update(_get_all_anchor_ids(item[1]))
     return anchor_ids
 
-def _build_tree(toc_items: list, book: epub.EpubBook, temp_image_dir: Path, all_anchor_ids: set) -> List[Dict[str, Any]]:
+
+# pylint: disable=too-many-locals, too-many-nested-blocks
+def _build_tree(
+    toc_items: list, book: epub.EpubBook, temp_image_dir: Path, all_anchor_ids: set
+) -> List[Dict[str, Any]]:
+    """Recursively builds the content tree from the ToC."""
     tree = []
     for item in toc_items:
         if isinstance(item, epub.Link):
@@ -68,16 +94,21 @@ def _build_tree(toc_items: list, book: epub.EpubBook, temp_image_dir: Path, all_
                 start_node = soup.find(id=anchor_id) if anchor_id else soup.body
                 if start_node:
                     content_slice = []
+                    # Collect all sibling tags until the next anchor is found
                     for sibling in start_node.find_next_siblings():
                         if isinstance(sibling, Tag) and sibling.get('id') in all_anchor_ids:
                             break
                         content_slice.append(sibling)
+                    # Include the starting node itself if it's not the body
                     if start_node.name not in ['body']:
                         content_slice.insert(0, start_node)
-                    content = _extract_content_from_tag_list(content_slice, book, doc_item, temp_image_dir)
+                    content = _extract_content_from_tag_list(
+                        content_slice, book, doc_item, temp_image_dir
+                    )
             node = {'title': item.title, 'content': content, 'children': []}
             tree.append(node)
         elif isinstance(item, (list, tuple)):
+            # Handle nested ToC sections
             section_link, children_items = item[0], item[1]
             node = {
                 'title': section_link.title,
@@ -87,9 +118,17 @@ def _build_tree(toc_items: list, book: epub.EpubBook, temp_image_dir: Path, all_
             tree.append(node)
     return tree
 
+
 def parse(book: epub.EpubBook, temp_image_dir: Path) -> List[Dict[str, Any]]:
     """
-    Hàm công khai duy nhất để phân tích Ebook có cấu trúc anchor-based.
+    Public function to parse an EPUB with a complex, anchor-based ToC.
+
+    Args:
+        book: The ebooklib EpubBook object.
+        temp_image_dir: The path to the temporary directory for storing images.
+
+    Returns:
+        A list of dictionaries representing the structured content tree.
     """
     all_anchor_ids = _get_all_anchor_ids(book.toc)
     content_tree = _build_tree(book.toc, book, temp_image_dir, all_anchor_ids)

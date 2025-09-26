@@ -1,49 +1,82 @@
 # file-path: src/extract_app/core/content_structurer.py
-# version: 1.1
-# last-updated: 2025-09-22
-# description: Tinh chỉnh logic để xử lý các chương không có tiêu đề phụ.
+# version: 1.2 (Pylint Compliance)
+# last-updated: 2025-09-26
+# description: Cleans up the PDF content structurer module to meet Pylint standards.
 
-from typing import List, Dict, Any
+"""
+PDF Content Structurer.
+
+This module provides heuristics to analyze raw content extracted from a PDF
+chapter and structure it into smaller, more meaningful articles based on
+font size analysis to detect headings.
+"""
+
 from collections import Counter
+from typing import List, Dict, Any
+
 
 def _find_dominant_font_size(content: List) -> float:
-    sizes = [item[1]['size'] for item in content if item[0] == 'text' and item[1]['size'] > 0]
-    if not sizes: return 12.0
+    """Finds the most common font size in a list of text content items."""
+    sizes = [
+        item[1]['size'] for item in content
+        if item[0] == 'text' and isinstance(item[1], dict) and item[1].get('size', 0) > 0
+    ]
+    if not sizes:
+        return 12.0  # Return a default font size if none are found
     return Counter(sizes).most_common(1)[0][0]
 
+
+# pylint: disable=too-many-locals
 def structure_pdf_articles(chapter_content: List) -> List[Dict[str, Any]]:
-    if not chapter_content: return []
+    """
+    Structures raw PDF chapter content into a list of articles.
+
+    Args:
+        chapter_content: A list of content tuples (type, data) from the PDF parser.
+
+    Returns:
+        A list of dictionaries, where each dictionary represents a structured article.
+    """
+    if not chapter_content:
+        return []
 
     dominant_size = _find_dominant_font_size(chapter_content)
-    heading_threshold = dominant_size * 1.15 
+    heading_threshold = dominant_size * 1.15
 
     articles = []
     current_article_content = []
-    current_subtitle = "" # Bắt đầu với tiêu đề rỗng
-    
-    # --- LOGIC MỚI ĐỂ TÌM TIÊU ĐỀ ---
-    headings_found = any(item[0] == 'text' and item[1]['size'] > heading_threshold for item in chapter_content)
+    current_subtitle = ""
 
-    # Nếu không có tiêu đề phụ nào, coi cả chương là một bài viết duy nhất
+    # Check if any headings are present based on the font size threshold
+    headings_found = any(
+        item[0] == 'text' and isinstance(item[1], dict) and
+        item[1].get('size', 0) > heading_threshold
+        for item in chapter_content
+    )
+
+    # If no headings are found, treat the entire chapter as a single article
     if not headings_found:
         return [{'subtitle': '', 'content': chapter_content}]
 
-    # Nếu có tiêu đề, tiến hành tách bài
+    # If headings exist, split the content into articles
     for content_type, data in chapter_content:
         is_heading = False
-        if content_type == 'text':
-            if data['size'] > heading_threshold:
-                is_heading = True
+        if (content_type == 'text' and isinstance(data, dict) and
+                data.get('size', 0) > heading_threshold):
+            is_heading = True
 
         if is_heading:
+            # Save the previous article if it has content
             if current_article_content:
                 articles.append({'subtitle': current_subtitle, 'content': current_article_content})
-            current_subtitle = data['content']
+            # Start a new article
+            current_subtitle = data.get('content', '')
             current_article_content = []
         else:
             current_article_content.append((content_type, data))
 
+    # Append the last remaining article
     if current_article_content:
         articles.append({'subtitle': current_subtitle, 'content': current_article_content})
-        
+
     return articles
