@@ -10,7 +10,6 @@ This module provides heuristics to analyze raw content extracted from a PDF
 chapter and structure it into smaller, more meaningful articles based on
 font size analysis to detect headings.
 """
-
 from collections import Counter
 from typing import Any, Dict, List
 

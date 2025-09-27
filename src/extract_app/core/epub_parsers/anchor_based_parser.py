@@ -14,13 +14,10 @@ hierarchical structure.
 import os
 from pathlib import Path
 from typing import Any, Dict, List
-
 from bs4 import BeautifulSoup, Tag
 from ebooklib import epub
 
-
 # --- HELPER FUNCTIONS ---
-
 def _save_image_to_temp(image_item, temp_image_dir: Path, prefix="epub_") -> str:
     """Saves an image item to a temporary directory and returns its path."""
     image_bytes = image_item.get_content()
@@ -57,6 +54,7 @@ def _extract_content_from_tag_list(
                     anchor = _save_image_to_temp(image_item, temp_image_dir)
                     caption_tag = (img_tag.find_parent('figure').find('figcaption')
                                  if img_tag.find_parent('figure') else None)
+
                     caption = caption_tag.get_text(
                         strip=True) if caption_tag else ""
                     content_list.append(
@@ -79,6 +77,7 @@ def _get_all_anchor_ids(toc_items: List) -> set:
         elif isinstance(item, (list, tuple)):
             anchor_ids.update(_get_all_anchor_ids(item[1]))
     return anchor_ids
+
 
 
 # pylint: disable=too-many-locals
