@@ -1,6 +1,6 @@
 # file-path: src/extract_app/core/epub_parsers/anchor_based_parser.py
 # version: 1.1 (Pylint Compliance)
-# last-updated: 2025-09-26
+# last-updated: 2025-09-27
 # description: Cleans up the anchor-based parser module to meet Pylint standards.
 
 """
@@ -13,11 +13,9 @@ hierarchical structure.
 
 import os
 from pathlib import Path
-from typing import List, Dict, Any
-
+from typing import Any, Dict, List
 from bs4 import BeautifulSoup, Tag
 from ebooklib import epub
-
 
 # --- HELPER FUNCTIONS ---
 def _save_image_to_temp(image_item, temp_image_dir: Path, prefix="epub_") -> str:
@@ -35,7 +33,8 @@ def _resolve_image_path(src: str, doc_item: epub.EpubHtml, book: epub.EpubBook):
     if not src:
         return None
     current_dir = Path(doc_item.get_name()).parent
-    resolved_path_str = os.path.normpath(os.path.join(current_dir, src)).replace('\\', '/')
+    resolved_path_str = os.path.normpath(
+        os.path.join(current_dir, src)).replace('\\', '/')
     return book.get_item_with_href(resolved_path_str)
 
 
@@ -49,13 +48,17 @@ def _extract_content_from_tag_list(
             continue
         for img_tag in element.find_all('img'):
             if img_tag.get('src'):
-                image_item = _resolve_image_path(img_tag.get('src'), doc_item, book)
+                image_item = _resolve_image_path(
+                    img_tag.get('src'), doc_item, book)
                 if image_item:
                     anchor = _save_image_to_temp(image_item, temp_image_dir)
                     caption_tag = (img_tag.find_parent('figure').find('figcaption')
                                  if img_tag.find_parent('figure') else None)
-                    caption = caption_tag.get_text(strip=True) if caption_tag else ""
-                    content_list.append(('image', {'anchor': anchor, 'caption': caption}))
+
+                    caption = caption_tag.get_text(
+                        strip=True) if caption_tag else ""
+                    content_list.append(
+                        ('image', {'anchor': anchor, 'caption': caption}))
         # Extract text only if the element itself is not a figure or image container
         if element.name not in ['figure', 'img']:
             text = element.get_text(strip=True)
@@ -76,7 +79,8 @@ def _get_all_anchor_ids(toc_items: List) -> set:
     return anchor_ids
 
 
-# pylint: disable=too-many-locals, too-many-nested-blocks
+
+# pylint: disable=too-many-locals
 def _build_tree(
     toc_items: list, book: epub.EpubBook, temp_image_dir: Path, all_anchor_ids: set
 ) -> List[Dict[str, Any]]:

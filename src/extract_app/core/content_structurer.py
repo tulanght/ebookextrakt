@@ -1,6 +1,6 @@
 # file-path: src/extract_app/core/content_structurer.py
 # version: 1.2 (Pylint Compliance)
-# last-updated: 2025-09-26
+# last-updated: 2025-09-27
 # description: Cleans up the PDF content structurer module to meet Pylint standards.
 
 """
@@ -10,9 +10,8 @@ This module provides heuristics to analyze raw content extracted from a PDF
 chapter and structure it into smaller, more meaningful articles based on
 font size analysis to detect headings.
 """
-
 from collections import Counter
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 
 def _find_dominant_font_size(content: List) -> float:
@@ -68,7 +67,10 @@ def structure_pdf_articles(chapter_content: List) -> List[Dict[str, Any]]:
         if is_heading:
             # Save the previous article if it has content
             if current_article_content:
-                articles.append({'subtitle': current_subtitle, 'content': current_article_content})
+                articles.append({
+                    'subtitle': current_subtitle,
+                    'content': current_article_content
+                })
             # Start a new article
             current_subtitle = data.get('content', '')
             current_article_content = []
@@ -77,6 +79,9 @@ def structure_pdf_articles(chapter_content: List) -> List[Dict[str, Any]]:
 
     # Append the last remaining article
     if current_article_content:
-        articles.append({'subtitle': current_subtitle, 'content': current_article_content})
+        articles.append({
+            'subtitle': current_subtitle,
+            'content': current_article_content
+        })
 
     return articles

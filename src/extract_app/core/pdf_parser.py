@@ -1,6 +1,6 @@
 # file-path: src/extract_app/core/pdf_parser.py
 # version: 7.1 (Pylint Compliance)
-# last-updated: 2025-09-26
+# last-updated: 2025-09-27
 # description: Cleans up the PDF parser module to meet Pylint standards.
 
 """
@@ -15,8 +15,7 @@ falling back to per-page splitting.
 import re
 import traceback
 from pathlib import Path
-from typing import List, Dict, Any
-
+from typing import Any, Dict, List
 import fitz  # PyMuPDF
 
 
@@ -66,9 +65,9 @@ def parse_pdf(filepath: str) -> Dict[str, Any]:
     temp_image_dir = Path("temp/images")
     temp_image_dir.mkdir(parents=True, exist_ok=True)
 
+    doc: fitz.Document | None = None
     try:
-        doc: fitz.Document = fitz.open(filepath)
-
+        doc = fitz.open(filepath)
         meta = doc.metadata
         results['metadata']['title'] = meta.get('title', Path(filepath).stem)
         results['metadata']['author'] = meta.get('author', 'Không rõ')
@@ -141,9 +140,11 @@ def parse_pdf(filepath: str) -> Dict[str, Any]:
                 content_tree.append(node)
 
         results['content'] = content_tree
-        doc.close()
         return results
 
     except Exception:
         traceback.print_exc()
         return {'metadata': {}, 'content': []}
+    finally:
+        if doc:
+            doc.close()

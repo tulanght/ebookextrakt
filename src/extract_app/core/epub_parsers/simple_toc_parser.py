@@ -21,6 +21,8 @@ from bs4 import BeautifulSoup, Tag
 from ebooklib import epub
 
 # --- CONFIGURATION ---
+# A chapter containing more than 15 sub-headings is a strong indicator
+# that it's a "container chapter" that needs to be split.
 HEADING_SPLIT_THRESHOLD = 15
 
 
@@ -138,6 +140,7 @@ def _process_chapter(
                 children.append(
                     {'title': 'Phần mở đầu', 'content': intro_content, 'children': []})
 
+
     for i, separator in enumerate(separators):
         next_separator = separators[i+1] if i + 1 < len(separators) else None
         is_sub_chapter = not _has_meaningful_content_between(
@@ -168,6 +171,7 @@ def _process_chapter(
                 sub_chapter_node['children'].append(article)
             else:
                 # Append directly to the main chapter's children list
+
                 children.append(article)
     return [], children
 

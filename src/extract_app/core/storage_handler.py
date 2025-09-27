@@ -1,6 +1,6 @@
 # file-path: src/extract_app/core/storage_handler.py
 # version: 5.1 (Pylint Compliance)
-# last-updated: 2025-09-26
+# last-updated: 2025-09-27
 # description: Cleans up the storage handler module to meet Pylint standards.
 
 """
@@ -13,9 +13,10 @@ ebooks into a nested folder structure on the local filesystem.
 import shutil
 import traceback
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 
+# pylint: disable=too-many-locals
 def _save_node_recursively(node: Dict[str, Any], parent_path: Path, index: int):
     """
     Recursively saves a content node and its children, creating a nested
@@ -23,7 +24,8 @@ def _save_node_recursively(node: Dict[str, Any], parent_path: Path, index: int):
     """
     title = node.get('title', f'Section_{index+1}').strip()
     # Sanitize the title to create a valid directory name
-    safe_title = "".join([c for c in title if c.isalnum() or c in (' ', '-')]).rstrip()
+    safe_title = "".join(
+        [c for c in title if c.isalnum() or c in (' ', '-')]).rstrip()
     if not safe_title:
         safe_title = f"Untitled_{index+1}"
 
@@ -84,7 +86,8 @@ def save_as_folders(
         book_name: The name of the book, used for the main folder.
 
     Returns:
-        A tuple containing a success flag and the path to the saved directory or an error message.
+        A tuple containing a success flag and the path to the saved directory
+        or an error message.
     """
     try:
         book_dir = base_path / Path(book_name).stem
