@@ -1,18 +1,12 @@
 # file-path: src/extract_app/core/epub_parsers/simple_toc_parser.py
-# version: 13.2 (Pylint E1136 Final Fix)
+# version: 16.0 (Definitive Fix)
 # last-updated: 2025-09-27
-# description: Refactors the tree-building logic to be clearer for the Pylint static analyzer, definitively fixing E1136.
+# description: A final, robust implementation of the Anchor & Siblings algorithm, rewritten to be functionally correct and Pylint compliant, definitively fixing all known bugs.
 
 """
 Parser for EPUB files with a simple, flat Table of Contents structure.
-
-This module uses a data-driven heuristic to intelligently decide whether to
-split a chapter into multiple articles or treat it as a single content block.
-It can build a hierarchical tree (Chapter -> Sub-Chapter -> Article) if
-the structure is detected within the content.
 """
 
-import os
 from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -20,92 +14,44 @@ from typing import Any, Dict, List, Tuple
 from bs4 import BeautifulSoup, Tag
 from ebooklib import epub
 
+# Import shared helper functions
+from . import utils
+
 # --- CONFIGURATION ---
 HEADING_SPLIT_THRESHOLD = 15
 
-
-# --- HELPER FUNCTIONS (Stable) ---
-def _save_image_to_temp(image_item, temp_image_dir: Path, prefix="epub_") -> str:
-    """Saves an image item to a temporary directory and returns its path."""
-    image_bytes = image_item.get_content()
-    image_filename = f"{prefix}{Path(image_item.get_name()).name}"
-    image_path = temp_image_dir / image_filename
-    with open(image_path, "wb") as f:
-        f.write(image_bytes)
-    return str(image_path)
-
-
-def _resolve_image_path(src: str, doc_item: epub.EpubHtml, book: epub.EpubBook):
-    """Resolves the absolute path of an image given its relative src."""
-    if not src:
-        return None
-    current_dir = Path(doc_item.get_name()).parent
-    resolved_path_str = os.path.normpath(
-        os.path.join(current_dir, src)).replace('\\', '/')
-    return book.get_item_with_href(resolved_path_str)
-
-
-def _extract_content_from_tags(
-    tags: List[Tag], book: epub.EpubBook, doc_item: epub.EpubHtml, temp_image_dir: Path
-) -> List:
-    """Extracts text and image data from a list of BeautifulSoup tags."""
-    content_list = []
-    for element in tags:
-        if not isinstance(element, Tag):
-            continue
-        temp_soup = BeautifulSoup(str(element), 'xml')
-        temp_tag = temp_soup.find(element.name)
-        if not temp_tag:
-            continue
-        for img_tag in temp_tag.find_all('img'):
-            if img_tag.get('src'):
-                image_item = _resolve_image_path(
-                    img_tag.get('src'), doc_item, book)
-                if image_item:
-                    anchor = _save_image_to_temp(
-                        image_item, temp_image_dir)
-                    caption_tag = (img_tag.find_parent('figure').find('figcaption')
-                                 if img_tag.find_parent('figure') else None)
-                    caption = caption_tag.get_text(
-                        strip=True) if caption_tag else ""
-                    content_list.append(
-                        ('image', {'anchor': anchor, 'caption': caption}))
-            img_tag.decompose()
-        text = temp_tag.get_text(strip=True)
-        if text:
-            content_list.append(('text', text))
-    return content_list
-
-
+# --- HELPER FUNCTION (Specific to this module) ---
 def _has_meaningful_content_between(
-    start_tag: Tag, end_tag: Tag | None, separator_tag_name: str
+    start_tag: Tag, end_tag: Tag | None
 ) -> bool:
     """Checks for real content (text or images) between two tags."""
     for sibling in start_tag.find_next_siblings():
         if sibling == end_tag:
             break
         if not isinstance(sibling, Tag):
+            # Ignore NavigableString objects that are just whitespace
+            if isinstance(sibling, str) and sibling.strip():
+                return True
             continue
-        if sibling.name != separator_tag_name and \
-           (sibling.get_text(strip=True) or sibling.find('img')):
+        # If we find any tag that is not just a container, it's meaningful
+        if sibling.get_text(strip=True) or sibling.find('img'):
             return True
     return False
 
 
-# --- CORE LOGIC ---
+# --- CORE LOGIC (v16.0 - FINAL) ---
 # pylint: disable=too-many-locals, too-many-branches
 def _process_chapter(
     soup_body: Tag, book: epub.EpubBook, doc_item: epub.EpubHtml, temp_image_dir: Path
 ) -> Tuple[List, List]:
     """
-    Processes a single chapter, splitting it into a hierarchical structure
-    if necessary, based on heading analysis.
+    Processes a single chapter using the definitive Anchor & Siblings algorithm.
     """
     potential_levels = ['h2', 'h3', 'h4', 'h5', 'h6']
     all_headings = soup_body.find_all(potential_levels)
 
     if not all_headings:
-        return _extract_content_from_tags(
+        return utils.extract_content_from_tags(
             soup_body.find_all(True), book, doc_item, temp_image_dir
         ), []
 
@@ -119,57 +65,58 @@ def _process_chapter(
     should_split = separator_tag and counts.get(
         separator_tag, 0) > HEADING_SPLIT_THRESHOLD
     if not should_split:
-        return _extract_content_from_tags(
+        return utils.extract_content_from_tags(
             soup_body.find_all(True), book, doc_item, temp_image_dir
         ), []
 
-    # --- HIERARCHICAL TREE BUILDER ---
-    children = []
+    # --- HIERARCHICAL TREE BUILDER (ROBUST IMPLEMENTATION) ---
+    final_nodes = []
     separators = soup_body.find_all(separator_tag)
-    sub_chapter_node = None
 
+    # Handle "Phần mở đầu"
     if separators:
         intro_tags = list(separators[0].find_previous_siblings())
         intro_tags.reverse()
         if intro_tags:
-            intro_content = _extract_content_from_tags(
+            intro_content = utils.extract_content_from_tags(
                 intro_tags, book, doc_item, temp_image_dir)
             if intro_content:
-                children.append(
+                final_nodes.append(
                     {'title': 'Phần mở đầu', 'content': intro_content, 'children': []})
 
+    current_sub_chapter_node = None
     for i, separator in enumerate(separators):
         next_separator = separators[i+1] if i + 1 < len(separators) else None
-        is_sub_chapter = not _has_meaningful_content_between(
-            separator, next_separator, separator_tag)
+        is_sub_chapter_heading = not _has_meaningful_content_between(
+            separator, next_separator)
 
-        if is_sub_chapter:
+        if is_sub_chapter_heading:
+            # Create a new sub-chapter and add it to the main list
             sub_chapter_node = {
                 'title': separator.get_text(strip=True), 'content': [], 'children': []
             }
-            children.append(sub_chapter_node)
+            final_nodes.append(sub_chapter_node)
+            # Set this new node as the current parent for subsequent articles
+            current_sub_chapter_node = sub_chapter_node
         else:
+            # It's an article, so create the article node
             title = separator.get_text(strip=True)
             tags = [separator]
             for sibling in separator.find_next_siblings():
                 if sibling == next_separator:
                     break
                 tags.append(sibling)
-
-            content = _extract_content_from_tags(
+            content = utils.extract_content_from_tags(
                 tags, book, doc_item, temp_image_dir)
-            article = {'title': title, 'content': content, 'children': []}
+            article_node = {'title': title, 'content': content, 'children': []}
 
-            # *** REFACTORED LOGIC TO FIX E1136 ***
-            # Explicitly determine where to append the article.
-            # This is clearer for the static analyzer.
-            if isinstance(sub_chapter_node, dict):
-                # Append to the current sub-chapter's children list
-                sub_chapter_node['children'].append(article)
+            # Decide where to append the article
+            if current_sub_chapter_node is not None:
+                current_sub_chapter_node['children'].append(article_node)
             else:
-                # Append directly to the main chapter's children list
-                children.append(article)
-    return [], children
+                final_nodes.append(article_node)
+
+    return [], final_nodes
 
 
 def parse(book: epub.EpubBook, temp_image_dir: Path) -> List[Dict[str, Any]]:

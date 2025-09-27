@@ -108,7 +108,7 @@ def inspect_epub_structure(filepath, output_file):
         print(f"Analysis complete. Report saved to '{output_file}'")
 
     except Exception as e:
-        print(f"\n--- An unexpected error occurred ---")
+        print("\n--- An unexpected error occurred ---")
         print(f"Error: {e}")
         import traceback
         traceback.print_exc()
