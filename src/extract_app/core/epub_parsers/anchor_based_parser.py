@@ -1,5 +1,5 @@
 # file-path: src/extract_app/core/epub_parsers/anchor_based_parser.py
-# version: 2.1 (Robust Content Slicing)
+# version 2.1 (Robust Content Slicing)
 # last-updated: 2025-09-27
 # description: Implements a more robust content slicing method that is independent of HTML nesting structure, fixing the "0 words, 0 images" bug.
 
