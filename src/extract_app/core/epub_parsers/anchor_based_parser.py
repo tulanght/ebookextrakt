@@ -57,7 +57,6 @@ def _build_tree(
                     # Include the starting node itself in the content
                     if start_node.name not in ['body']:
                          content_slice.insert(0, start_node)
-
                     content = utils.extract_content_from_tags(
                         content_slice, book, doc_item, temp_image_dir
                     )
