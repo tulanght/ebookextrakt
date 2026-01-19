@@ -1,7 +1,7 @@
 # file-path: src/extract_app/core/epub_parsers/utils.py
 # version: 1.0
 # last-updated: 2025-09-27
-# description: Shared utility functions for EPUB parsers to avoid code duplication.
+# description: Shared utility functions for EPUB parsers to avoid code duplication..
 
 """
 Shared utility functions for EPUB parsers.

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import List, Dict, Any
 
 import fitz  # PyMuPDF
+from ..shared import debug_logger
 
 
 def _parse_toc_from_text(doc: fitz.Document) -> List:
@@ -25,7 +26,7 @@ def _parse_toc_from_text(doc: fitz.Document) -> List:
     Tries to heuristically parse a Table of Contents from the text of the
     first few pages of the document.
     """
-    print("Đang thử phân tích Mục lục từ text...")
+    debug_logger.log("Đang thử phân tích Mục lục từ text...")
     toc = []
     # Pattern to find lines like "Chapter 1 .......... 5"
     toc_pattern = re.compile(r'(.+?)\s*[.\s]{3,}\s*(\d+)')
@@ -45,9 +46,9 @@ def _parse_toc_from_text(doc: fitz.Document) -> List:
                     toc.append([1, title, page_number])
 
     if toc:
-        print(f"  -> Heuristic đã tìm thấy {len(toc)} mục từ text.")
+        debug_logger.log(f"  -> Heuristic đã tìm thấy {len(toc)} mục từ text.")
     else:
-        print("  -> Heuristic không tìm thấy mục lục nào từ text.")
+        debug_logger.log("  -> Heuristic không tìm thấy mục lục nào từ text.")
     return toc
 
 
@@ -67,6 +68,7 @@ def parse_pdf(filepath: str) -> Dict[str, Any]:
     temp_image_dir.mkdir(parents=True, exist_ok=True)
 
     try:
+        debug_logger.log(f"Bắt đầu phân tích PDF: {filepath}")
         doc: fitz.Document = fitz.open(filepath)
 
         meta = doc.metadata
@@ -98,15 +100,16 @@ def parse_pdf(filepath: str) -> Dict[str, Any]:
             toc = _parse_toc_from_text(doc)
             source = "Text Heuristic"
         if not toc:
-            print("Không tìm thấy Mục lục, sẽ chia theo từng trang.")
+            debug_logger.log("Không tìm thấy Mục lục, sẽ chia theo từng trang.")
             source = "Per-Page Splitting"
             toc = [[1, f"Trang {i+1}", i+1] for i in range(doc.page_count)]
-        print(f"Đã xác định cấu trúc bằng phương pháp: {source}")
+        debug_logger.log(f"Đã xác định cấu trúc bằng phương pháp: {source}")
 
         content_tree = []
         toc.sort(key=lambda item: item[2])
         for i, item in enumerate(toc):
             _, title, start_page = item
+            debug_logger.log(f"Đang xử lý chương: {title} (Trang {start_page})")
             start_page = max(start_page - 1, 0)
 
             end_page = doc.page_count

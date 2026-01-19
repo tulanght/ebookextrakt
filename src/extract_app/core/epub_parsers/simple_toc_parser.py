@@ -1,7 +1,7 @@
 # file-path: src/extract_app/core/epub_parsers/simple_toc_parser.py
-# version: 16.0 (Definitive Fix)
-# last-updated: 2025-09-27
-# description: A final, robust implementation of the Anchor & Siblings algorithm, rewritten to be functionally correct and Pylint compliant, definitively fixing all known bugs.
+# version: 17.0 (Refactored with Utils)
+# last-updated: 2025-09-28
+# description: Refactored to use shared helper functions from utils.py.
 
 """
 Parser for EPUB files with a simple, flat Table of Contents structure.
@@ -16,6 +16,7 @@ from ebooklib import epub
 
 # Import shared helper functions
 from . import utils
+from ...shared import debug_logger
 
 # --- CONFIGURATION ---
 HEADING_SPLIT_THRESHOLD = 15
@@ -28,8 +29,8 @@ def _has_meaningful_content_between(
     for sibling in start_tag.find_next_siblings():
         if sibling == end_tag:
             break
+        # Ignore NavigableString objects that are just whitespace
         if not isinstance(sibling, Tag):
-            # Ignore NavigableString objects that are just whitespace
             if isinstance(sibling, str) and sibling.strip():
                 return True
             continue
@@ -39,7 +40,7 @@ def _has_meaningful_content_between(
     return False
 
 
-# --- CORE LOGIC (v16.0 - FINAL) ---
+# --- CORE LOGIC ---
 # pylint: disable=too-many-locals, too-many-branches
 def _process_chapter(
     soup_body: Tag, book: epub.EpubBook, doc_item: epub.EpubHtml, temp_image_dir: Path
@@ -69,11 +70,10 @@ def _process_chapter(
             soup_body.find_all(True), book, doc_item, temp_image_dir
         ), []
 
-    # --- HIERARCHICAL TREE BUILDER (ROBUST IMPLEMENTATION) ---
+    # --- HIERARCHICAL TREE BUILDER ---
     final_nodes = []
     separators = soup_body.find_all(separator_tag)
 
-    # Handle "Phần mở đầu"
     if separators:
         intro_tags = list(separators[0].find_previous_siblings())
         intro_tags.reverse()
@@ -91,15 +91,12 @@ def _process_chapter(
             separator, next_separator)
 
         if is_sub_chapter_heading:
-            # Create a new sub-chapter and add it to the main list
             sub_chapter_node = {
                 'title': separator.get_text(strip=True), 'content': [], 'children': []
             }
             final_nodes.append(sub_chapter_node)
-            # Set this new node as the current parent for subsequent articles
             current_sub_chapter_node = sub_chapter_node
         else:
-            # It's an article, so create the article node
             title = separator.get_text(strip=True)
             tags = [separator]
             for sibling in separator.find_next_siblings():
@@ -110,7 +107,6 @@ def _process_chapter(
                 tags, book, doc_item, temp_image_dir)
             article_node = {'title': title, 'content': content, 'children': []}
 
-            # Decide where to append the article
             if current_sub_chapter_node is not None:
                 current_sub_chapter_node['children'].append(article_node)
             else:
@@ -123,6 +119,7 @@ def parse(book: epub.EpubBook, temp_image_dir: Path) -> List[Dict[str, Any]]:
     """Parses an EPUB book with a simple ToC into a structured tree."""
     tree = []
     for link in book.toc:
+        debug_logger.log(f"SimpleParser: Đang kiểm tra link '{link.title}'")
         if any(kw in link.title.lower() for kw in
                ['cover', 'title', 'copyright', 'dedication', 'contents']):
             continue
@@ -135,6 +132,7 @@ def parse(book: epub.EpubBook, temp_image_dir: Path) -> List[Dict[str, Any]]:
             continue
         content, children = _process_chapter(
             soup.body, book, doc_item, temp_image_dir)
+        debug_logger.log(f"  -> Đã extract: {len(content)} bài viết con, {len(children)} chương con.")
         node = {'title': link.title,
                 'content': content, 'children': children}
         if node['content'] or node['children']:

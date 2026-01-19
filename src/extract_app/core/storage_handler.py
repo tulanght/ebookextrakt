@@ -34,6 +34,8 @@ def _save_node_recursively(node: Dict[str, Any], parent_path: Path, index: int):
     if content_list:
         full_text_content = []
         image_counter = 0
+        seen_images = {}  # Map source_anchor_path -> dest_filename
+
         for content_type, data in content_list:
             if content_type == 'text':
                 # Ensure text data is a string
@@ -49,10 +51,15 @@ def _save_node_recursively(node: Dict[str, Any], parent_path: Path, index: int):
 
                 anchor_path = Path(anchor_path_str)
                 if anchor_path.exists():
-                    # Copy the image file
-                    dest_filename = f"image_{image_counter:03d}{anchor_path.suffix}"
-                    shutil.copy2(anchor_path, current_path / dest_filename)
-                    image_counter += 1
+                    # Check if we've already saved this image in this folder
+                    if anchor_path_str in seen_images:
+                        dest_filename = seen_images[anchor_path_str]
+                    else:
+                        # Copy the image file
+                        dest_filename = f"image_{image_counter:03d}{anchor_path.suffix}"
+                        shutil.copy2(anchor_path, current_path / dest_filename)
+                        seen_images[anchor_path_str] = dest_filename
+                        image_counter += 1
 
                     # Create a formatted Image Anchor tag
                     caption = data.get('caption', '').strip()

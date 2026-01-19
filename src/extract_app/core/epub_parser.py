@@ -20,26 +20,11 @@ from bs4 import BeautifulSoup
 from ebooklib import epub
 
 # Import các parser chuyên biệt
+# Import các parser chuyên biệt
 from .epub_parsers import anchor_based_parser, simple_toc_parser
-
-
-def _save_image_to_temp(image_item, temp_image_dir: Path, prefix="epub_") -> str:
-    """Saves an image item to a temporary directory and returns its path."""
-    image_bytes = image_item.get_content()
-    image_filename = f"{prefix}{Path(image_item.get_name()).name}"
-    image_path = temp_image_dir / image_filename
-    with open(image_path, "wb") as f:
-        f.write(image_bytes)
-    return str(image_path)
-
-
-def _resolve_image_path(src: str, doc_item: epub.EpubHtml, book: epub.EpubBook):
-    """Resolves the absolute path of an image given its relative src."""
-    if not src:
-        return None
-    current_dir = Path(doc_item.get_name()).parent
-    resolved_path_str = os.path.normpath(os.path.join(current_dir, src)).replace('\\', '/')
-    return book.get_item_with_href(resolved_path_str)
+# Import centralized utils
+from .epub_parsers.utils import resolve_image_path, save_image_to_temp
+from ..shared import debug_logger
 
 
 def parse_epub(filepath: str) -> Dict[str, Any]:
@@ -57,6 +42,7 @@ def parse_epub(filepath: str) -> Dict[str, Any]:
     temp_image_dir.mkdir(parents=True, exist_ok=True)
 
     try:
+        debug_logger.log(f"Bắt đầu phân tích EPUB: {filepath}")
         book = epub.read_epub(filepath)
 
         # --- Trích xuất Metadata & Ảnh bìa ---
@@ -70,34 +56,97 @@ def parse_epub(filepath: str) -> Dict[str, Any]:
             results['metadata']['author'] = 'Không rõ'
 
         cover_path = ""
-        cover_item = book.get_item_with_id('cover')
+        cover_id = None
+        
+        # 1. Try to find cover ID from metadata (standard OPF way)
+        try:
+            # Debug metadata structure to understand namespace issues
+            debug_logger.log(f"Metadata namespaces: {list(book.metadata.keys())}")
+            
+            opf_ns = 'http://www.idpf.org/2007/opf'
+            if opf_ns in book.metadata and 'meta' in book.metadata[opf_ns]:
+                for meta_val, meta_attrs in book.metadata[opf_ns]['meta']:
+                    if meta_attrs.get('name') == 'cover':
+                        cover_id = meta_attrs.get('content')
+                        debug_logger.log(f"Found cover ID from metadata: {cover_id}")
+                        break
+        except Exception as e:
+            debug_logger.log(f"Error reading metadata for cover: {e}")
+
+        cover_item = book.get_item_with_id(cover_id) if cover_id else None
+
+        # 2. Fallback: Try standard IDs
+        if not cover_item:
+            for potential_id in ['cover', 'cover-image', 'coverimage']:
+                 cover_item = book.get_item_with_id(potential_id)
+                 if cover_item:
+                     debug_logger.log(f"Found cover via fallback ID: {potential_id}")
+                     break
+        
+        # 3. Fallback: Try filenames (startswith/endswith)
         if not cover_item:
             for item in book.get_items():
-                if item.get_name().lower() in ['cover.xhtml', 'cover.html']:
-                    cover_item = item
-                    break
+                name = item.get_name().lower()
+                if 'cover' in name and (
+                    name.endswith('.xhtml') or 
+                    name.endswith('.html') or 
+                    name.endswith('.jpg') or 
+                    name.endswith('.jpeg')
+                ):
+                    # Prioritize exact matches or "cover" at end of name
+                    if name.endswith('cover.xhtml') or name.endswith('cover.html') or 'cover' in name.split('/')[-1]:
+                        cover_item = item
+                        debug_logger.log(f"Found cover via filename: {name}")
+                        break
+        
         if cover_item:
             try:
-                soup = BeautifulSoup(cover_item.get_content(), 'xml')
-                img_tag = soup.find('img')
-                if img_tag and img_tag.get('src'):
-                    final_cover_item = _resolve_image_path(img_tag.get('src'), cover_item, book)
-                    if final_cover_item:
-                        cover_path = _save_image_to_temp(
-                            final_cover_item, temp_image_dir, "epub_cover_"
-                        )
-            except Exception:  # pylint: disable=broad-except
-                pass  # Ignore errors parsing cover
+                # Check if the cover item is an image itself
+                media_type = getattr(cover_item, 'media_type', '').lower()
+                file_name = cover_item.get_name().lower()
+                
+                debug_logger.log(f"Inspecting cover item: id={cover_item.get_id()}, name={file_name}, media_type={media_type}")
+
+                is_direct_image = (
+                    media_type.startswith('image/') or 
+                    file_name.endswith(('.jpg', '.jpeg', '.png', '.gif'))
+                )
+
+                if is_direct_image:
+                    debug_logger.log(f"Cover item is a direct image: {file_name}")
+                    cover_path = save_image_to_temp(
+                        cover_item, temp_image_dir, "epub_cover_"
+                    )
+                else:
+                    debug_logger.log("Cover item is considered HTML wrapper. Parsing with BeautifulSoup.")
+                    # Assume it's an HTML/XHTML wrapper
+                    soup = BeautifulSoup(cover_item.get_content(), 'xml')
+                    img_tag = soup.find('img')
+                    if img_tag and img_tag.get('src'):
+                        final_cover_item = resolve_image_path(img_tag.get('src'), cover_item, book)
+                        if final_cover_item:
+                            cover_path = save_image_to_temp(
+                                final_cover_item, temp_image_dir, "epub_cover_"
+                            )
+                        else:
+                            debug_logger.log(f"Could not resolve image path from src: {img_tag.get('src')}")
+                    else:
+                         debug_logger.log("No img tag found in cover wrapper.")
+            except Exception as e:  # pylint: disable=broad-except
+                debug_logger.log(f"Error processing cover item: {e}")
+                pass
+        else:
+            debug_logger.log("No cover item found after all fallback attempts.")
         results['metadata']['cover_image_path'] = cover_path
 
         # --- Logic Điều phối ---
         is_nested = any(isinstance(item, (list, tuple)) for item in book.toc)
 
         if is_nested:
-            print("=> Detected nested ToC. Using anchor-based parser.")
+            debug_logger.log("=> Detected nested ToC. Using anchor-based parser.")
             results['content'] = anchor_based_parser.parse(book, temp_image_dir)
         else:
-            print("=> Detected simple ToC. Using simple ToC parser.")
+            debug_logger.log("=> Detected simple ToC. Using simple ToC parser.")
             results['content'] = simple_toc_parser.parse(book, temp_image_dir)
 
         return results
