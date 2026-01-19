@@ -1,7 +1,7 @@
 # file-path: src/extract_app/modules/main_window.py
-# version: 13.0 (Refactored UI)
+# version: 14.0 (UI Modernization)
 # last-updated: 2026-01-20
-# description: Split UI components into HeaderFrame and ResultsView.
+# description: Refactored functionality to use Sidebar, TopBar, and Dashboard.
 
 """
 Main window module for the ExtractPDF-EPUB application.
@@ -26,8 +26,11 @@ from customtkinter import filedialog
 
 # --- Local Application Imports ---
 from ..core import content_structurer, epub_parser, pdf_parser, storage_handler
-from .ui.header_frame import HeaderFrame
+from .ui.sidebar import SidebarFrame
+from .ui.top_bar import TopBarFrame
+from .ui.dashboard_view import DashboardView
 from .ui.results_view import ResultsView
+# Note: HeaderFrame is no longer used in the new layout
 
 class MainWindow(ctk.CTk):
     """
@@ -36,9 +39,11 @@ class MainWindow(ctk.CTk):
 
     def __init__(self):
         super().__init__()
-        self.title("ExtractPDF-EPUB App")
-        self.geometry("1000x800")
+        self.title("ExtractPDF-EPUB App - Modern UI")
+        self.geometry("1100x800")
         sv_ttk.set_theme("light")
+        # Optional: Set dark mode if desired by user plan, but keeping light compatible for now
+        # ctk.set_appearance_mode("Dark") 
 
         # Instance Attributes
         self.current_results: Dict[str, Any] = {}
@@ -48,99 +53,100 @@ class MainWindow(ctk.CTk):
         self.progress_bar: ctk.CTkProgressBar | None = None
         
         # UI Components
-        self.header_frame: HeaderFrame
+        self.sidebar: SidebarFrame
+        self.top_bar: TopBarFrame
+        self.dashboard_view: DashboardView
         self.results_view: ResultsView
-        self.welcome_frame: ctk.CTkFrame
         self.loading_frame: ctk.CTkFrame
         self.loading_label: ctk.CTkLabel
-        self.log_textbox: ctk.CTkTextbox
+        
+        # Container for swappable views
+        self.content_area: ctk.CTkFrame
 
         # UI Initialization
         self._create_main_layout()
-        self._create_header()
-        self._create_welcome_screen()
-        self._create_loading_screen()
-        self._create_results_view()
-        self._create_log_panel()
-        self.show_welcome_screen()
+        self._init_components()
+        self._show_view("dashboard")
 
     def _create_main_layout(self):
-        """Configure the main grid layout of the window."""
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=1)
-        self.grid_rowconfigure(3, weight=0, minsize=120)
+        """Configure the main grid layout: Sidebar (Left) + Content (Right)."""
+        self.grid_columnconfigure(0, weight=0, minsize=200) # Sidebar
+        self.grid_columnconfigure(1, weight=1)              # Content
+        self.grid_rowconfigure(0, weight=1)
 
-    def _create_header(self):
-        """Create the top header frame."""
-        self.header_frame = HeaderFrame(
-            self,
-            on_select_callback=self._on_select_file_button_click,
-            on_save_callback=self._on_save_button_click,
-            recent_save_paths=self.recent_save_paths
-        )
-        self.header_frame.grid(row=0, column=0, padx=10, pady=(10, 0), sticky="ew")
+    def _init_components(self):
+        """Initialize all UI components."""
+        # 1. Sidebar
+        self.sidebar = SidebarFrame(self, on_navigate=self._on_navigate)
+        self.sidebar.grid(row=0, column=0, sticky="nsew")
+        
+        # 2. Right Side Container (Top Bar + View Area)
+        self.right_container = ctk.CTkFrame(self, fg_color="transparent")
+        self.right_container.grid(row=0, column=1, sticky="nsew")
+        self.right_container.grid_rowconfigure(1, weight=1)
+        self.right_container.grid_columnconfigure(0, weight=1)
+        
+        # 3. Top Bar
+        self.top_bar = TopBarFrame(self.right_container, on_close=self._close_current_file)
+        self.top_bar.grid(row=0, column=0, sticky="ew")
+        
+        # 4. Content Area (Holds Dashboard, Loading, Results)
+        self.content_area = ctk.CTkFrame(self.right_container, fg_color="transparent")
+        self.content_area.grid(row=1, column=0, sticky="nsew", padx=20, pady=20)
+        self.content_area.grid_rowconfigure(0, weight=1)
+        self.content_area.grid_columnconfigure(0, weight=1)
 
-    def _create_welcome_screen(self):
-        """Create the initial welcome screen."""
-        self.welcome_frame = ctk.CTkFrame(self, fg_color="transparent")
-        ctk.CTkLabel(
-            self.welcome_frame, text="Vui lòng chọn một file Ebook để bắt đầu", font=("", 24)
-        ).pack(expand=True)
-
-    def _create_loading_screen(self):
-        """Create the loading animation screen."""
-        self.loading_frame = ctk.CTkFrame(self, fg_color="transparent")
+        # 5. Views
+        self.dashboard_view = DashboardView(self.content_area, on_import=self._on_select_file)
+        self.results_view = ResultsView(self.content_area, on_extract=self._on_extract_content)
+        
+        # Loading Screen
+        self.loading_frame = ctk.CTkFrame(self.content_area, fg_color="transparent")
         self.loading_label = ctk.CTkLabel(self.loading_frame, text="Đang xử lý...", font=("", 24))
         self.loading_label.pack(expand=True)
 
-    def _create_results_view(self):
-        """Create the results view component."""
-        self.results_view = ResultsView(self, log_callback=self._log)
-        # Initially hidden
-
-    def _create_log_panel(self):
-        """Create the bottom panel for logging messages."""
-        self.log_textbox = ctk.CTkTextbox(self, height=120, wrap="word", state="disabled")
-        self.log_textbox.grid(row=3, column=0, padx=10, pady=(5, 10), sticky="ew")
-
-    def _log(self, message: str):
-        """Append a timestamped message to the log panel."""
-        timestamp = time.strftime("%H:%M:%S")
-        formatted_message = f"[{timestamp}] {message}\n"
-        self.log_textbox.configure(state="normal")
-        self.log_textbox.insert("end", formatted_message)
-        self.log_textbox.see("end")
-        self.log_textbox.configure(state="disabled")
-        self.update_idletasks()
-
-    def show_welcome_screen(self):
-        """Display the welcome screen and hide others."""
-        self.loading_frame.grid_forget()
-        if hasattr(self, 'results_view'):
-            self.results_view.grid_forget()
-        self.welcome_frame.grid(row=1, column=0, sticky="nsew")
-
-    def show_loading_screen(self, filename: str):
-        """Display the loading screen with the current filename."""
-        self.welcome_frame.grid_forget()
-        if hasattr(self, 'results_view'):
-            self.results_view.grid_forget()
-        self.loading_label.configure(text=f"Đang phân tích file:\n{filename}...")
-        self.loading_frame.grid(row=1, column=0, sticky="nsew")
-        self.update_idletasks()
-
-    def show_results_view(self):
-        """Display the results view and populate it with data."""
-        self.loading_frame.grid_forget()
-        self.welcome_frame.grid_forget()
-        self.results_view.grid(row=1, column=0, sticky="nsew")
+    def _on_navigate(self, view_name: str):
+        """Handle sidebar navigation events."""
+        self.sidebar.set_active_button(view_name)
         
-        # Populate results
-        self.results_view.show_results(self.current_results)
-        self.header_frame.set_save_button_state("normal")
+        if view_name == "dashboard":
+            # Smart Navigation: If we have results, show them. Else show import screen.
+            if self.current_results and self.current_results.get('content'):
+                self._show_view("results")
+            elif self.current_results and self.current_results.get('error'):
+                 # If there was an error, maybe show dashboard to try again
+                 self._show_view("dashboard")
+            else:
+                 # Check if we are currently loading
+                 if self.loading_frame.winfo_viewable():
+                     self._show_view("loading")
+                 else:
+                     self._show_view("dashboard")
 
-    def _on_select_file_button_click(self):
-        """Handle the 'Select Ebook' button click event."""
+        elif view_name == "library":
+            # Future implementation
+            pass
+        elif view_name == "settings":
+            # Future implementation
+            pass
+
+    def _show_view(self, view_name: str):
+        """Switch the visible view in the content area."""
+        # Hide all
+        self.dashboard_view.grid_forget()
+        self.results_view.grid_forget()
+        self.loading_frame.grid_forget()
+        
+        # Show selected
+        if view_name == "dashboard":
+            self.dashboard_view.grid(row=0, column=0, sticky="nsew")
+        elif view_name == "results":
+            self.results_view.grid(row=0, column=0, sticky="nsew")
+        elif view_name == "loading":
+            self.loading_frame.grid(row=0, column=0, sticky="nsew")
+
+    def _on_select_file(self):
+        """Handle file selection from Dashboard."""
         filepath = filedialog.askopenfilename(
             title="Chọn một file Ebook", filetypes=[("Ebooks", "*.pdf *.epub")]
         )
@@ -148,15 +154,16 @@ class MainWindow(ctk.CTk):
             return
 
         filename = Path(filepath).name
-        self._log(f"Đã chọn file: {filename}")
-        self._log("Bắt đầu quá trình phân tích...")
-
         self.current_filepath = filepath
-        self.header_frame.set_buttons_state("disabled")
-        self.show_loading_screen(filename)
+        self.top_bar.set_file_path(filepath)
+        
+        # Switch to loading
+        self._show_view("loading")
+        self.loading_label.configure(text=f"Đang phân tích file:\n{filename}...")
 
-        self.progress_bar = ctk.CTkProgressBar(self, mode='indeterminate')
-        self.progress_bar.grid(row=2, column=0, padx=10, pady=5, sticky="ew")
+        # Start parsing
+        self.progress_bar = ctk.CTkProgressBar(self.loading_frame, mode='indeterminate')
+        self.progress_bar.pack(pady=20)
         self.progress_bar.start()
 
         threading.Thread(
@@ -165,17 +172,16 @@ class MainWindow(ctk.CTk):
         self.after(100, self._check_results_queue)
 
     def _worker_parse_file(self, filepath, q):
-        """
-        Worker thread function to parse the ebook file off the main UI thread.
-        """
+        """Worker thread function."""
+        # Reuse existing parsing logic
         file_extension = Path(filepath).suffix.lower()
         results = {}
         try:
             if file_extension == ".pdf":
                 raw_results = pdf_parser.parse_pdf(filepath)
+                # ... same restructuring logic as before ...
                 final_tree = []
                 for chapter_node in raw_results.get('content', []):
-                    # Basic restructuring if needed
                     articles = content_structurer.structure_pdf_articles(
                         chapter_node.get('content', [])
                     )
@@ -198,56 +204,64 @@ class MainWindow(ctk.CTk):
         q.put(results)
 
     def _check_results_queue(self):
-        """Periodically check the queue for results from the worker thread."""
+        """Check for parsing results."""
         try:
             results = self.results_queue.get_nowait()
             if self.progress_bar:
                 self.progress_bar.stop()
-                self.progress_bar.grid_forget()
-
+            
             self.current_results = results
             
-            # Check for error in results or explicit error key
             if results.get('error'):
-                 self._log(f"Lỗi: {results.get('error')}")
+                 messagebox.showerror("Lỗi", f"Lỗi phân tích: {results.get('error')}")
+                 self._show_view("dashboard")
+                 return
             
             if self.current_results and self.current_results.get('content'):
-                self._log("Phân tích hoàn tất.")
-                self.show_results_view()
+                self._show_view("results")
+                self.results_view.show_results(self.current_results)
+                # IMPORTANT: We need to enable the 'Extract' button in ResultsView here
+                # accessing: self.results_view.set_extract_enabled(True) (To be implemented)
             else:
-                error_content = "Không tìm thấy nội dung hợp lệ."
-                if not results.get('error'):
-                     self._log(f"Cảnh báo: {error_content}")
-                self.header_frame.set_select_button_state("normal")
+                 messagebox.showwarning("Cảnh báo", "Không tìm thấy nội dung hợp lệ.")
+                 self._show_view("dashboard")
                 
         except queue.Empty:
             self.after(100, self._check_results_queue)
 
-    def _on_save_button_click(self):
-        """Handle the save button click event."""
-        target_dir = self.header_frame.get_save_path()
-        if not target_dir or not Path(target_dir).is_dir():
-            messagebox.showerror("Lỗi Đường Dẫn", f"Đường dẫn không hợp lệ: {target_dir}")
+    # Note: _on_save_button_click logic removed from here as it will move to ResultsView
+    # or be coordinated from here if ResultsView emits an event.
+    def _on_extract_content(self, target_dir: str):
+        """Handle extraction trigger from ResultsView."""
+        if not target_dir:
             return
-        self._log(f"Bắt đầu lưu vào thư mục: {target_dir}...")
-        self.header_frame.set_buttons_state("disabled")
 
+        # Check for overwrite
+        output_name = Path(self.current_filepath).name
+        full_output_path = Path(target_dir) / output_name.replace(" ", "_").replace(".epub", "").replace(".pdf", "")
+        
+        if full_output_path.exists():
+            if not messagebox.askyesno(
+                "Thư mục đã tồn tại", 
+                f"Thư mục '{full_output_path.name}' đã tồn tại.\nBạn có muốn ghi đè (xóa và tạo lại) không?"
+            ):
+                return
+        
+        # Execute save
         success, message = storage_handler.save_as_folders(
             self.current_results.get('content', []),
             Path(target_dir),
             Path(self.current_filepath).name
         )
 
-        self.header_frame.set_buttons_state("normal")
         if success:
-            self._log(f"Lưu thành công vào: {message}")
-            if messagebox.askyesno(
-                "Lưu Thành Công!",
-                f"Đã lưu thành công vào:\n{message}\n\nBạn có muốn mở thư mục này không?"
+             if messagebox.askyesno(
+                "Trích xuất thành công",
+                f"Đã lưu vào:\n{message}\nMở thư mục ngay?"
             ):
                 self._open_folder(message)
         else:
-            self._log(f"Lưu thất bại: {message}")
+            messagebox.showerror("Lỗi trích xuất", f"Có lỗi xảy ra: {message}")
 
     def _open_folder(self, path: str):
         """Open the specified folder in the default file explorer."""
@@ -261,6 +275,14 @@ class MainWindow(ctk.CTk):
             if os.name == 'posix':
                  subprocess.run(['xdg-open', os.path.realpath(path)], check=True)
             else:
-                 self._log("Lỗi: Không thể tự động mở thư mục trên hệ điều hành này.")
-        except (OSError, subprocess.CalledProcessError) as e:
-            self._log(f"Lỗi không thể mở thư mục: {e}")
+                 pass # Cannot handle open folder
+        except (OSError, subprocess.CalledProcessError):
+             pass # Simple ignore if fails
+
+    def _close_current_file(self):
+        """Clear current result and return to dashboard."""
+        if self.current_results and messagebox.askyesno("Đóng file", "Bạn có chắc muốn đóng file hiện tại không?"):
+             self.current_results = {}
+             self.current_filepath = ""
+             self.top_bar.set_file_path("")
+             self._show_view("dashboard")
