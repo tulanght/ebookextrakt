@@ -24,8 +24,13 @@ Thumbs.db
 
 # Temp files
 temp/
+temp_*/
 Output/
 
 # Log files
 *.txt
 *.log
+
+# Large Samples & Debug
+test_samples/
+debug_*.py

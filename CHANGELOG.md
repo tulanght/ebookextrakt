@@ -25,6 +25,11 @@ Dự án này tuân theo [Keep a Changelog](https://keepachangelog.com/en/1.0.0/
 -   **Git**: Loại bỏ thư mục `test_samples/` (chứa file mẫu nặng >500MB) và các script debug khỏi lịch sử theo dõi.
 -   **Quy định**: Cập nhật `project_rules.md` giới hạn kích thước file commit (<50MB).
 
+### 📢 Phản hồi & Tương tác (UI Feedback)
+-   **Log Panel**: Khu vực hiển thị log trực tiếp trên giao diện, giúp theo dõi quá trình xử lý mà không cần mở console.
+-   **Loading Overlay**: Màn hình chờ chuyên nghiệp, hiển thị thanh tiến trình (Progress Bar) chi tiết khi Lưu file, không còn bị treo giao diện.
+-   **Thread-Safety**: Tách tác vụ Lưu trữ (Save) sang luồng riêng nền (background thread).
+
 ## [0.1.0-alpha] - 2025-09-20
 
 Đây là phiên bản Alpha đầu tiên, hoàn thiện các chức năng cốt lõi về trích xuất và lưu trữ dữ liệu từ file PDF và EPUB.

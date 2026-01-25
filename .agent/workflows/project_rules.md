@@ -17,6 +17,10 @@ description: GLOBAL RULES - READ THIS FIRST
 - **NEVER COMMIT TO MAIN**: You must be on a `feature/` or `fix/` branch.
 - **ATOMIC COMMITS**: One logical change per commit.
 - **CHANGELOG**: You MUST update `CHANGELOG.md` before finishing a task.
+- **GIT CONSTRAINTS**:
+    - **NO LARGE FILES**: Files > 50MB are FORBIDDEN. Add them to `.gitignore`.
+    - **CLEANUP**: Remove `temp/`, `Output/`, and debug scripts before pushing.
+    - **PRE-CHECK**: Run `git status` to verify no large files are staged.
 
 ## 3. Coding Standards
 - **READ STANDARDS**: Before writing any code, read `.agent/workflows/coding_standards.md`.

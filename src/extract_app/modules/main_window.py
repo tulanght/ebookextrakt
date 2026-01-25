@@ -29,10 +29,13 @@ from customtkinter import filedialog
 
 # --- Local Application Imports ---
 from ..core import content_structurer, epub_parser, pdf_parser, storage_handler
+from ..shared import debug_logger  # Added for log subscription
 from .ui.sidebar import SidebarFrame
 from .ui.top_bar import TopBarFrame
 from .ui.dashboard_view import DashboardView
 from .ui.results_view import ResultsView
+from .ui.log_panel import LogPanel # New Component
+from .ui.loading_overlay import LoadingOverlay # New Component
 # Note: HeaderFrame is no longer used in the new layout
 
 class MainWindow(ctk.CTk):
@@ -88,30 +91,44 @@ class MainWindow(ctk.CTk):
         )
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         
-        # 2. Right Side Container (Top Bar + View Area)
+        # 2. Right Side Container (Top Bar + View Area + Log)
         self.right_container = ctk.CTkFrame(self, fg_color="transparent")
         self.right_container.grid(row=0, column=1, sticky="nsew")
-        self.right_container.grid_rowconfigure(1, weight=1)
+        self.right_container.grid_rowconfigure(1, weight=1) # Content Area
+        self.right_container.grid_rowconfigure(2, weight=0) # Log Panel
         self.right_container.grid_columnconfigure(0, weight=1)
         
         # 3. Top Bar
         self.top_bar = TopBarFrame(self.right_container, on_close=self._close_current_file)
         self.top_bar.grid(row=0, column=0, sticky="ew")
         
-        # 4. Content Area (Holds Dashboard, Loading, Results)
+        # 4. Content Area (Holds Dashboard, Results)
         self.content_area = ctk.CTkFrame(self.right_container, fg_color="transparent")
         self.content_area.grid(row=1, column=0, sticky="nsew", padx=20, pady=20)
         self.content_area.grid_rowconfigure(0, weight=1)
         self.content_area.grid_columnconfigure(0, weight=1)
 
-        # 5. Views
+        # 5. Log Panel (Bottom)
+        self.log_panel = LogPanel(self.right_container, height=150)
+        self.log_panel.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 20))
+        
+        # Connect Logger
+        # Use lambda or direct method to route messages to the UI panel on the main thread.
+        # Since tkinter is not thread-safe for GUI updates from workers, we should technically use queue/after.
+        # However, for simple appending, many tk implementations handle it or crash. 
+        # Best practice: Wrapper. But for now direct call (assuming writer uses after/event if needed, or risked).
+        # We will use .after logic in write_log if crashes occur. 
+        # Re-check LogPanel implementation... it uses direct calls. 
+        # Let's wrap it in an `after` call to be safe from threads.
+        debug_logger.register_listener(lambda msg: self.after(0, self.log_panel.write_log, msg))
+
+        # 6. Views
         self.dashboard_view = DashboardView(self.content_area, on_import=self._on_select_file)
         self.results_view = ResultsView(self.content_area, on_extract=self._on_extract_content)
         
-        # Loading Screen
-        self.loading_frame = ctk.CTkFrame(self.content_area, fg_color="transparent")
-        self.loading_label = ctk.CTkLabel(self.loading_frame, text="Đang xử lý...", font=("", 24))
-        self.loading_label.pack(expand=True)
+        # 7. Loading Overlay (Replaces old loading_frame)
+        self.loading_overlay = LoadingOverlay(self.content_area)
+        # We don't pack it yet. `_show_view` will handle it.
 
     def _on_navigate(self, view_name: str):
         """Handle sidebar navigation events."""
@@ -126,7 +143,7 @@ class MainWindow(ctk.CTk):
                  self._show_view("dashboard")
             else:
                  # Check if we are currently loading
-                 if self.loading_frame.winfo_viewable():
+                 if self.loading_overlay.winfo_viewable():
                      self._show_view("loading")
                  else:
                      self._show_view("dashboard")
@@ -141,7 +158,8 @@ class MainWindow(ctk.CTk):
         # Hide all
         self.dashboard_view.grid_forget()
         self.results_view.grid_forget()
-        self.loading_frame.grid_forget()
+        self.results_view.grid_forget()
+        self.loading_overlay.grid_forget()
         
         # Show selected
         if view_name == "dashboard":
@@ -149,7 +167,7 @@ class MainWindow(ctk.CTk):
         elif view_name == "results":
             self.results_view.grid(row=0, column=0, sticky="nsew")
         elif view_name == "loading":
-            self.loading_frame.grid(row=0, column=0, sticky="nsew")
+            self.loading_overlay.grid(row=0, column=0, sticky="nsew")
 
     def _on_select_file(self):
         """Handle file selection from Dashboard."""
@@ -165,12 +183,7 @@ class MainWindow(ctk.CTk):
         
         # Switch to loading
         self._show_view("loading")
-        self.loading_label.configure(text=f"Đang phân tích file:\n{filename}...")
-
-        # Start parsing
-        self.progress_bar = ctk.CTkProgressBar(self.loading_frame, mode='indeterminate')
-        self.progress_bar.pack(pady=20)
-        self.progress_bar.start()
+        self.loading_overlay.update_status(title=f"Đang phân tích file:\n{filename}...", progress=None)
 
         threading.Thread(
             target=self._worker_parse_file, args=(filepath, self.results_queue), daemon=True
@@ -213,8 +226,6 @@ class MainWindow(ctk.CTk):
         """Check for parsing results."""
         try:
             results = self.results_queue.get_nowait()
-            if self.progress_bar:
-                self.progress_bar.stop()
             
             self.current_results = results
             
@@ -247,7 +258,7 @@ class MainWindow(ctk.CTk):
         if not target_dir:
             return
 
-        # Check for overwrite
+        # Check for overwrite (Main Thread UI interaction)
         output_name = Path(self.current_filepath).name
         full_output_path = Path(target_dir) / output_name.replace(" ", "_").replace(".epub", "").replace(".pdf", "")
         
@@ -258,19 +269,43 @@ class MainWindow(ctk.CTk):
             ):
                 return
         
-        # Execute save
-        success, message = storage_handler.save_as_folders(
-            self.current_results.get('content', []),
-            Path(target_dir),
-            Path(self.current_filepath).name
-        )
+        # Show Loading Overlay for Saving
+        self._show_view("loading")
+        self.loading_overlay.update_status(title="Đang lưu dữ liệu...", detail="Chuẩn bị...", progress=0.0)
 
+        # Start Saving Thread
+        threading.Thread(
+            target=self._worker_save_content, 
+            args=(self.current_results.get('content', []), Path(target_dir), Path(self.current_filepath).name),
+            daemon=True
+        ).start()
+
+    def _worker_save_content(self, content, target_dir, book_name):
+        """Worker thread for saving content."""
+        def progress_adapter(percent, msg):
+            # Update UI from worker thread safely
+            self.after(0, self.loading_overlay.update_status, "Đang lưu dữ liệu...", msg, percent)
+
+        success, message = storage_handler.save_as_folders(
+            content, target_dir, book_name, progress_callback=progress_adapter
+        )
+        
+        # Schedule completion on main thread
+        self.after(0, self._on_save_complete, success, message)
+
+    def _on_save_complete(self, success, message):
+        """Handle save completion on main thread."""
+        # Restore view (implicitly hides loading overlay, but we want to stay on results usually?)
+        # Actually stay on results.
+        self._show_view("results") # This hides loading overlay
+        
         if success:
+             output_path = message
              if messagebox.askyesno(
                 "Trích xuất thành công",
-                f"Đã lưu vào:\n{message}\nMở thư mục ngay?"
+                f"Đã lưu vào:\n{output_path}\nMở thư mục ngay?"
             ):
-                self._open_folder(message)
+                self._open_folder(output_path)
         else:
             messagebox.showerror("Lỗi trích xuất", f"Có lỗi xảy ra: {message}")
 
