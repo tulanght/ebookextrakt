@@ -16,7 +16,15 @@ description: GLOBAL RULES - READ THIS FIRST
 ## 2. Git & Workflow
 - **NEVER COMMIT TO MAIN**: You must be on a `feature/` or `fix/` branch.
 - **ATOMIC COMMITS**: One logical change per commit.
-- **CHANGELOG**: You MUST update `CHANGELOG.md` before finishing a task.
+- **STRICT VERIFICATION**:
+    - **Step 1**: Run automated scripts.
+    - **Step 2**: **MUST** ask User to manually verify (`notify_user`).
+    - **Step 3**: ONLY merge/push after User says "OK".
+- **DOCUMENTATION MANDATE**:
+    - Update `CHANGELOG.md` (What changed).
+    - Update `ROADMAP.md` (Mark features as `[x]`).
+    - Update `task.md` (Mark as done).
+    - **FAILURE TO UPDATE DOCS = TASK FAILURE**.
 - **GIT CONSTRAINTS**:
     - **NO LARGE FILES**: Files > 50MB are FORBIDDEN. Add them to `.gitignore`.
     - **CLEANUP**: Remove `temp/`, `Output/`, and debug scripts before pushing.

@@ -17,11 +17,11 @@ Phát triển `ExtractPDF-EPUB App` thành một **Trung tâm Nội dung Thông 
     * Chỉ hiển thị cấu trúc: Tên chương/bài và Image Anchor.
     * Đã tích hợp tính năng đếm từ/ảnh (ví dụ: `[Text: 250 words]`).
 
-* **[ ] Xây dựng Hệ thống Log Tích hợp:**
+* **[x] Xây dựng Hệ thống Log Tích hợp:**
     * Đưa khu vực log vào bên trong giao diện chính.
     * Log sẽ hiển thị thông tin tóm tắt, thông minh (ví dụ: "Trích xuất thành công 15 chương, tìm thấy 45 hình ảnh.") thay vì log chi tiết.
 
-* **[ ] Nâng cấp Toàn diện Luồng làm việc:**
+* **[x] Nâng cấp Toàn diện Luồng làm việc:**
     * Thêm **thanh tiến trình (progress bar)** cho các tác vụ tải và lưu file.
     * Thêm **popup thông báo** khi lưu thành công, kèm tùy chọn "Mở thư mục".
     * Cải tiến chức năng lưu: Hỗ trợ thư mục lưu mặc định, tự tạo nếu chưa có, và có danh sách dropdown để chọn lại các thư mục đã dùng gần đây.
