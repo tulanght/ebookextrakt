@@ -5,6 +5,26 @@ Dự án này tuân theo [Keep a Changelog](https://keepachangelog.com/en/1.0.0/
 
 ---
 
+## [Unreleased] - 2026-01-20
+
+### ⚙️ Quy trình & Hạ tầng (Workflow & Infra)
+-   **Quy trình nghiêm ngặt**: Triển khai hệ thống `.agent/workflows/` để bắt buộc Agent tuân thủ quy trình.
+-   **Tiêu chuẩn Code**: Thiết lập luật cứng về File Header, Docstrings, và Type Hints (`coding_standards.md`).
+-   **Experiment**: Thử nghiệm thành công quy trình mới trên nhánh `exp/workflow-simulation`.
+
+### 🎨 Giao diện & Trải nghiệm (UI/UX)
+-   **Sidebar**: Thêm nút "Hiện tại" và "Đóng sách" giúp điều hướng nhanh chóng.
+-   **Hiệu năng**: Chế độ "Featherweight" cho ResultsView, sử dụng Lazy Loading giúp mở file lớn ngay lập tức.
+-   **Dark Mode**: Kích hoạt giao diện tối mặc định.
+
+### 🐛 Sửa lỗi (Bug Fixes)
+-   **ResultsView**: Khắc phục lỗi crash do dữ liệu tuple từ parser cũ, đảm bảo hiển thị nội dung chính xác.
+-   **Navigation**: Thêm thông báo "Coming Soon" cho các nút chưa có chức năng (Library, Settings).
+
+### 🧹 Dọn dẹp & Tối ưu (Cleanup & Optimization)
+-   **Git**: Loại bỏ thư mục `test_samples/` (chứa file mẫu nặng >500MB) và các script debug khỏi lịch sử theo dõi.
+-   **Quy định**: Cập nhật `project_rules.md` giới hạn kích thước file commit (<50MB).
+
 ## [0.1.0-alpha] - 2025-09-20
 
 Đây là phiên bản Alpha đầu tiên, hoàn thiện các chức năng cốt lõi về trích xuất và lưu trữ dữ liệu từ file PDF và EPUB.

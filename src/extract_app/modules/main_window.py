@@ -1,7 +1,10 @@
-# file-path: src/extract_app/modules/main_window.py
-# version: 14.0 (UI Modernization)
-# last-updated: 2026-01-20
-# description: Refactored functionality to use Sidebar, TopBar, and Dashboard.
+# --------------------------------------------------------------------------------
+# Project: ExtractPDF-EPUB
+# File: src/extract_app/modules/main_window.py
+# Version: 1.1.0
+# Author: Antigravity
+# Description: Main window module orchestrating UI and core logic.
+# --------------------------------------------------------------------------------
 
 """
 Main window module for the ExtractPDF-EPUB application.
@@ -41,9 +44,9 @@ class MainWindow(ctk.CTk):
         super().__init__()
         self.title("ExtractPDF-EPUB App - Modern UI")
         self.geometry("1100x800")
-        sv_ttk.set_theme("light")
-        # Optional: Set dark mode if desired by user plan, but keeping light compatible for now
-        # ctk.set_appearance_mode("Dark") 
+        # Theme Configuration
+        ctk.set_appearance_mode("Dark")
+        sv_ttk.set_theme("dark") 
 
         # Instance Attributes
         self.current_results: Dict[str, Any] = {}
@@ -77,7 +80,12 @@ class MainWindow(ctk.CTk):
     def _init_components(self):
         """Initialize all UI components."""
         # 1. Sidebar
-        self.sidebar = SidebarFrame(self, on_navigate=self._on_navigate)
+        # 1. Sidebar
+        self.sidebar = SidebarFrame(
+            self, 
+            on_navigate=self._on_navigate,
+            on_close_book=self._close_current_file
+        )
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         
         # 2. Right Side Container (Top Bar + View Area)
@@ -124,11 +132,9 @@ class MainWindow(ctk.CTk):
                      self._show_view("dashboard")
 
         elif view_name == "library":
-            # Future implementation
-            pass
+            messagebox.showinfo("Thông báo", "Tính năng Thư viện đang được phát triển.\nSẽ có trong phiên bản tới!")
         elif view_name == "settings":
-            # Future implementation
-            pass
+            messagebox.showinfo("Thông báo", "Tính năng Cài đặt đang được phát triển.\nSẽ có trong phiên bản tới!")
 
     def _show_view(self, view_name: str):
         """Switch the visible view in the content area."""
@@ -220,6 +226,11 @@ class MainWindow(ctk.CTk):
             if self.current_results and self.current_results.get('content'):
                 self._show_view("results")
                 self.results_view.show_results(self.current_results)
+                
+                # Update Sidebar State
+                self.sidebar.show_active_book_controls()
+                self.sidebar.set_active_button("results")
+                
                 # IMPORTANT: We need to enable the 'Extract' button in ResultsView here
                 # accessing: self.results_view.set_extract_enabled(True) (To be implemented)
             else:
@@ -279,10 +290,19 @@ class MainWindow(ctk.CTk):
         except (OSError, subprocess.CalledProcessError):
              pass # Simple ignore if fails
 
-    def _close_current_file(self):
-        """Clear current result and return to dashboard."""
-        if self.current_results and messagebox.askyesno("Đóng file", "Bạn có chắc muốn đóng file hiện tại không?"):
-             self.current_results = {}
-             self.current_filepath = ""
-             self.top_bar.set_file_path("")
-             self._show_view("dashboard")
+    def _close_current_file(self) -> None:
+        """
+        Clear current result and return to dashboard.
+        
+        Prompts the user for confirmation before closing.
+        """
+        if self.current_results:
+            if messagebox.askyesno("Đóng file", "Bạn có chắc muốn đóng file hiện tại không?"):
+                 self.current_results = {}
+                 self.current_filepath = ""
+                 self.top_bar.set_file_path("")
+                 
+                 # Update Widgets
+                 self.sidebar.hide_active_book_controls()
+                 self._show_view("dashboard")
+                 self.sidebar.set_active_button("dashboard")

@@ -1,8 +1,0 @@
-# requirements.txt
-PyMuPDF
-ebooklib
-customtkinter
-sv-ttk
-Pillow
-beautifulsoup4
-lxml
