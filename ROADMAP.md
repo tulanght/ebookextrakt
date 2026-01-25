@@ -12,10 +12,10 @@ Phát triển `ExtractPDF-EPUB App` thành một **Trung tâm Nội dung Thông 
 ### Giai đoạn 1: Đại tu Giao diện & Trải nghiệm Người dùng (UI/UX Overhaul)
 *Mục tiêu: Tối ưu hóa hiệu năng, làm cho ứng dụng nhẹ, nhanh và thông minh hơn trong tương tác.*
 
-* **[ ] Triển khai Chế độ xem "Featherweight" (Ưu tiên cao nhất):**
-    * Thay đổi cơ chế hiển thị: Không tải toàn bộ nội dung text vào giao diện.
-    * Chỉ hiển thị cấu trúc: Tên chương/bài, image anchor (kèm caption), và các dòng giữ chỗ dạng `[Nội dung phần X]`.
-    * **Nghiên cứu & phát triển** tính năng đếm từ/ký tự để hiển thị kèm theo dòng giữ chỗ (ví dụ: `[Nội dung phần X (250 từ)]`).
+* **[x] Triển khai Chế độ xem "Featherweight" (Đã hoàn thành):**
+    * Thay đổi cơ chế hiển thị: Sử dụng "Lazy Loading" để hiển thị cây nội dung tức thì.
+    * Chỉ hiển thị cấu trúc: Tên chương/bài và Image Anchor.
+    * Đã tích hợp tính năng đếm từ/ảnh (ví dụ: `[Text: 250 words]`).
 
 * **[ ] Xây dựng Hệ thống Log Tích hợp:**
     * Đưa khu vực log vào bên trong giao diện chính.
@@ -65,3 +65,11 @@ Phát triển `ExtractPDF-EPUB App` thành một **Trung tâm Nội dung Thông 
 * **Xây dựng Hệ thống "Image Anchor":** Triển khai cơ chế lưu ảnh vào thư mục tạm và trả về "anchor" (đường dẫn) để tối ưu hiệu năng.
 * **Hoàn thiện Chức năng Lưu trữ ra Thư mục:** Xây dựng module lưu trữ có khả năng tạo cấu trúc thư mục theo chương và lưu đầy đủ file text, hình ảnh.
 * **Xây dựng Giao diện Xác minh Dữ liệu:** Tạo giao diện cơ bản cho phép người dùng kiểm tra trực quan kết quả trích xuất.
+
+## ✅ Thành tựu Mới (v1.1.0 - UI Modernization & Optimization)
+* **Tối ưu hóa Hiệu năng (Featherweight):** Giảm thời gian hiển thị kết quả EPUB lớn (>400MB) xuống dưới 1 giây nhờ Lazy Loading.
+* **Cải tiến Điều hướng:** Thêm Sidebar "Active Book" và nút "Close Book", giải quyết vấn đề điều hướng bị lag/bí.
+* **Cơ sở hạ tầng (Infrastructure):**
+    * Thiết lập quy trình làm việc nghiêm ngặt (Agentic Workflows).
+    * Dọn dẹp Git History, giảm dung lượng repo bằng cách loại bỏ file mẫu nặng.
+    * Tích hợp Dark Mode mặc định.
