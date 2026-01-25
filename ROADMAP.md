@@ -27,7 +27,7 @@ Phát triển `ExtractPDF-EPUB App` thành một **Trung tâm Nội dung Thông 
     * Cải tiến chức năng lưu: Hỗ trợ thư mục lưu mặc định, tự tạo nếu chưa có, và có danh sách dropdown để chọn lại các thư mục đã dùng gần đây.
     * Cải tiến các nút bấm để linh hoạt hơn (hỗ trợ nhấn Enter).
 
-* **[ ] Xây dựng Lịch sử Trích xuất:**
+* **[x] Xây dựng Lịch sử Trích xuất:**
     * Tạo một danh sách hiển thị các ebook đã được xử lý trước đó để truy cập nhanh.
 
 ### Giai đoạn 2: Nâng cao Lõi Phân tích & Lưu trữ (Advanced Parsing & Storage)
