@@ -51,20 +51,42 @@ def extract_content_from_tags(
         temp_tag = temp_soup.find(element.name)
         if not temp_tag:
             continue
-        for img_tag in temp_tag.find_all('img'):
+        
+        # Check if the tag itself is an image
+        images_to_process = temp_tag.find_all('img')
+        if temp_tag.name == 'img':
+            images_to_process.append(temp_tag)
+            
+        for img_tag in images_to_process:
             if img_tag.get('src'):
                 image_item = resolve_image_path(
                     img_tag.get('src'), doc_item, book)
                 if image_item:
                     anchor = save_image_to_temp(
                         image_item, temp_image_dir)
-                    caption_tag = (img_tag.find_parent('figure').find('figcaption')
-                                 if img_tag.find_parent('figure') else None)
-                    caption = caption_tag.get_text(
-                        strip=True) if caption_tag else ""
+                    # Try to find caption (complex if we re-parsed just the img)
+                    # For direct img, we might have lost the figure context if we only passed the img tag.
+                    # But SmartSplitter tries to pass containers.
+                    caption = ""
+                    if img_tag.parent and img_tag.parent.name == 'figure':
+                         caption_tag = img_tag.parent.find('figcaption')
+                         if caption_tag:
+                             caption = caption_tag.get_text(strip=True)
+
                     content_list.append(
                         ('image', {'anchor': anchor, 'caption': caption}))
-            img_tag.decompose()
+            
+            # Decompose to remove from text
+            # If temp_tag IS the image, decomposing it might be weird if we access it later?
+            # But we only access .get_text() later.
+            if img_tag != temp_tag:
+                 img_tag.decompose()
+        
+        # If the top tag was an image and we processed it, text will be empty/irrelevant.
+        if temp_tag.name == 'img':
+             continue
+             
+        text = temp_tag.get_text(strip=True)
         text = temp_tag.get_text(strip=True)
         if text:
             content_list.append(('text', text))

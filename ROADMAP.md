@@ -19,7 +19,7 @@ Phát triển `ExtractPDF-EPUB App` thành một **Trung tâm Nội dung Thông 
 ### Giai đoạn 2: Nâng cao Lõi Phân tích & Lưu trữ (Advanced Parsing & Storage)
 *Mục tiêu: Tăng cường độ chính xác của parser và mở rộng khả năng lưu trữ.*
 
-* **[ ] Phát triển Thuật toán Tách "Bài viết" Thông minh:**
+* **[x] Phát triển Thuật toán Tách "Bài viết" Thông minh:**
     * Xây dựng logic để tự động nhận diện và tách các bài viết lẻ bên trong một file chương lớn dựa trên các thẻ tiêu đề (`<h2>`, `<h3>`...) hoặc các dấu hiệu khác.
 
 * **[ ] Tích hợp Cơ sở dữ liệu SQLite:**

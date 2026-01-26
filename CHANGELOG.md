@@ -27,6 +27,10 @@ Dự án này tuân theo [Keep a Changelog](https://keepachangelog.com/en/1.0.0/
 -   **Extract History**: Tự động lưu lại các file đã mở/trích xuất gần đây.
 -   **Dashboard Quick Access**: Cho phép mở lại file nhanh chóng từ Dashboard mà không cần duyệt file lại.
 
+### 🧠 Lõi Phân tích (Core Parsing)
+-   **Smart Article Splitting**: Tự động chia nhỏ các chương dài thành các bài viết (sections) dựa trên tiêu đề (`<h2>`, `<h3>`), giúp nội dung dễ quản lý hơn.
+-   **Image Extraction**: Cải thiện thuật toán trích xuất ảnh, hỗ trợ lấy ảnh ngay cả khi nằm trong các thẻ `<img>` trực tiếp không có wrapper.
+
 ## [0.1.0-alpha] - 2025-09-20
 
 Đây là phiên bản Alpha đầu tiên, hoàn thiện các chức năng cốt lõi về trích xuất và lưu trữ dữ liệu từ file PDF và EPUB.

@@ -15,104 +15,53 @@ from bs4 import BeautifulSoup, Tag
 from ebooklib import epub
 
 # Import shared helper functions
+# Import shared helper functions
 from . import utils
 from ...shared import debug_logger
-
-# --- CONFIGURATION ---
-HEADING_SPLIT_THRESHOLD = 15
-
-# --- HELPER FUNCTION (Specific to this module) ---
-def _has_meaningful_content_between(
-    start_tag: Tag, end_tag: Tag | None
-) -> bool:
-    """Checks for real content (text or images) between two tags."""
-    for sibling in start_tag.find_next_siblings():
-        if sibling == end_tag:
-            break
-        # Ignore NavigableString objects that are just whitespace
-        if not isinstance(sibling, Tag):
-            if isinstance(sibling, str) and sibling.strip():
-                return True
-            continue
-        # If we find any tag that is not just a container, it's meaningful
-        if sibling.get_text(strip=True) or sibling.find('img'):
-            return True
-    return False
+from ..content_structurer import SmartSplitter
 
 
-# --- CORE LOGIC ---
+
+
+
 # pylint: disable=too-many-locals, too-many-branches
 def _process_chapter(
     soup_body: Tag, book: epub.EpubBook, doc_item: epub.EpubHtml, temp_image_dir: Path
 ) -> Tuple[List, List]:
     """
-    Processes a single chapter using the definitive Anchor & Siblings algorithm.
+    Processes a single chapter using SmartSplitter to divide it into sections.
     """
-    potential_levels = ['h2', 'h3', 'h4', 'h5', 'h6']
-    all_headings = soup_body.find_all(potential_levels)
-
-    if not all_headings:
-        return utils.extract_content_from_tags(
-            soup_body.find_all(True), book, doc_item, temp_image_dir
-        ), []
-
-    counts = Counter(h.name for h in all_headings)
-    separator_tag = None
-    for tag_level in potential_levels:
-        if counts.get(tag_level, 0) > 1:
-            separator_tag = tag_level
-            break
-
-    should_split = separator_tag and counts.get(
-        separator_tag, 0) > HEADING_SPLIT_THRESHOLD
-    if not should_split:
-        return utils.extract_content_from_tags(
-            soup_body.find_all(True), book, doc_item, temp_image_dir
-        ), []
-
-    # --- HIERARCHICAL TREE BUILDER ---
-    final_nodes = []
-    separators = soup_body.find_all(separator_tag)
-
-    if separators:
-        intro_tags = list(separators[0].find_previous_siblings())
-        intro_tags.reverse()
-        if intro_tags:
-            intro_content = utils.extract_content_from_tags(
-                intro_tags, book, doc_item, temp_image_dir)
-            if intro_content:
-                final_nodes.append(
-                    {'title': 'Phần mở đầu', 'content': intro_content, 'children': []})
-
-    current_sub_chapter_node = None
-    for i, separator in enumerate(separators):
-        next_separator = separators[i+1] if i + 1 < len(separators) else None
-        is_sub_chapter_heading = not _has_meaningful_content_between(
-            separator, next_separator)
-
-        if is_sub_chapter_heading:
-            sub_chapter_node = {
-                'title': separator.get_text(strip=True), 'content': [], 'children': []
-            }
-            final_nodes.append(sub_chapter_node)
-            current_sub_chapter_node = sub_chapter_node
+    # 1. Split into sections based on headers
+    sections = SmartSplitter.split_soup_to_sections(soup_body)
+    
+    # 2. Logic to determine if we have a "Main Content" (no subtitle) or just subsections
+    processed_content = []
+    processed_children = []
+    
+    for section in sections:
+        subtitle = section.get('subtitle', 'Nội dung')
+        tags = section.get('tags', [])
+        
+        # Extract content using the Utils (handles images, saving, cleaning)
+        extracted_data = utils.extract_content_from_tags(tags, book, doc_item, temp_image_dir)
+        
+        if not extracted_data:
+            continue
+            
+        # Heuristic: If subtitle is "Nội dung" or empty, treat as specific parent content?
+        # SmartSplitter defaults to "Nội dung".
+        # If it's the ONLY section and title is "Nội dung", it's the main content.
+        if len(sections) == 1 and subtitle == "Nội dung":
+            processed_content.extend(extracted_data)
         else:
-            title = separator.get_text(strip=True)
-            tags = [separator]
-            for sibling in separator.find_next_siblings():
-                if sibling == next_separator:
-                    break
-                tags.append(sibling)
-            content = utils.extract_content_from_tags(
-                tags, book, doc_item, temp_image_dir)
-            article_node = {'title': title, 'content': content, 'children': []}
-
-            if current_sub_chapter_node is not None:
-                current_sub_chapter_node['children'].append(article_node)
-            else:
-                final_nodes.append(article_node)
-
-    return [], final_nodes
+            # It's a subsection/subchapter
+            processed_children.append({
+                'title': subtitle,
+                'content': extracted_data,
+                'children': []
+            })
+            
+    return processed_content, processed_children
 
 
 def parse(book: epub.EpubBook, temp_image_dir: Path) -> List[Dict[str, Any]]:
