@@ -1,6 +1,6 @@
 # Lộ trình Phát triển (Roadmap)
-# version: 1.0
-# last-updated: 2025-09-20
+# version: 1.1.0
+# last-updated: 2026-01-25
 # description: Vạch ra các giai đoạn phát triển chính cho dự án.
 
 ## Tầm nhìn Dự án
@@ -10,25 +10,11 @@ Phát triển `ExtractPDF-EPUB App` thành một **Trung tâm Nội dung Thông 
 ## Lộ trình Phát triển (Các Giai đoạn Tiếp theo)
 
 ### Giai đoạn 1: Đại tu Giao diện & Trải nghiệm Người dùng (UI/UX Overhaul)
-*Mục tiêu: Tối ưu hóa hiệu năng, làm cho ứng dụng nhẹ, nhanh và thông minh hơn trong tương tác.*
-
-* **[x] Triển khai Chế độ xem "Featherweight" (Đã hoàn thành):**
-    * Thay đổi cơ chế hiển thị: Sử dụng "Lazy Loading" để hiển thị cây nội dung tức thì.
-    * Chỉ hiển thị cấu trúc: Tên chương/bài và Image Anchor.
-    * Đã tích hợp tính năng đếm từ/ảnh (ví dụ: `[Text: 250 words]`).
-
-* **[x] Xây dựng Hệ thống Log Tích hợp:**
-    * Đưa khu vực log vào bên trong giao diện chính.
-    * Log sẽ hiển thị thông tin tóm tắt, thông minh (ví dụ: "Trích xuất thành công 15 chương, tìm thấy 45 hình ảnh.") thay vì log chi tiết.
-
-* **[x] Nâng cấp Toàn diện Luồng làm việc:**
-    * Thêm **thanh tiến trình (progress bar)** cho các tác vụ tải và lưu file.
-    * Thêm **popup thông báo** khi lưu thành công, kèm tùy chọn "Mở thư mục".
-    * Cải tiến chức năng lưu: Hỗ trợ thư mục lưu mặc định, tự tạo nếu chưa có, và có danh sách dropdown để chọn lại các thư mục đã dùng gần đây.
-    * Cải tiến các nút bấm để linh hoạt hơn (hỗ trợ nhấn Enter).
-
-* **[x] Xây dựng Lịch sử Trích xuất:**
-    * Tạo một danh sách hiển thị các ebook đã được xử lý trước đó để truy cập nhanh.
+> **Trạng thái**: Đã hoàn thành (2026-01-25)
+* [x] Triển khai Chế độ xem "Featherweight".
+* [x] Xây dựng Hệ thống Log Tích hợp.
+* [x] Nâng cấp Toàn diện Luồng làm việc (Progress Bar, Background Save).
+* [x] Xây dựng Lịch sử Trích xuất.
 
 ### Giai đoạn 2: Nâng cao Lõi Phân tích & Lưu trữ (Advanced Parsing & Storage)
 *Mục tiêu: Tăng cường độ chính xác của parser và mở rộng khả năng lưu trữ.*
@@ -66,10 +52,16 @@ Phát triển `ExtractPDF-EPUB App` thành một **Trung tâm Nội dung Thông 
 * **Hoàn thiện Chức năng Lưu trữ ra Thư mục:** Xây dựng module lưu trữ có khả năng tạo cấu trúc thư mục theo chương và lưu đầy đủ file text, hình ảnh.
 * **Xây dựng Giao diện Xác minh Dữ liệu:** Tạo giao diện cơ bản cho phép người dùng kiểm tra trực quan kết quả trích xuất.
 
-## ✅ Thành tựu Mới (v1.1.0 - UI Modernization & Optimization)
+## ✅ Thành tựu Mới (v1.1.0 - UI Modernization & Optimization) | 2026-01-25
 * **Tối ưu hóa Hiệu năng (Featherweight):** Giảm thời gian hiển thị kết quả EPUB lớn (>400MB) xuống dưới 1 giây nhờ Lazy Loading.
-* **Cải tiến Điều hướng:** Thêm Sidebar "Active Book" và nút "Close Book", giải quyết vấn đề điều hướng bị lag/bí.
+* **Cải tiến Điều hướng:** Thêm Sidebar "Active Book" và nút "Close Book".
+* **Hệ thống Log & Phản hồi UI:**
+    * Log Panel tích hợp trực tiếp, không còn phụ thuộc console.
+    * Loading Overlay với Progress Bar thực tế.
+* **Lịch sử & Tiện ích:**
+    * History Manager: Tự động lưu và cho phép mở lại file gần đây.
+    * Cơ chế lưu file an toàn (Thread-safe).
 * **Cơ sở hạ tầng (Infrastructure):**
     * Thiết lập quy trình làm việc nghiêm ngặt (Agentic Workflows).
-    * Dọn dẹp Git History, giảm dung lượng repo bằng cách loại bỏ file mẫu nặng.
+    * Dọn dẹp Git History.
     * Tích hợp Dark Mode mặc định.

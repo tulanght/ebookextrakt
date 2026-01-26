@@ -119,48 +119,12 @@ def save_as_folders(
             }
             progress_callback(0.0, "Starting save...")
 
-                    percent = processed_nodes / total_nodes
-                    title = node.get('title', 'Untitled')
-                    progress_callback(percent, f"Saving: {title[:20]}...")
+        for i, root_node in enumerate(structured_content):
+            _save_node_recursively(root_node, book_dir, i, progress_ctx)
 
-                _save_node_recursively(node, parent, i)
-
-        # Modify _save_node_recursively to NOT recurse itself, but we need it to recuse?
-        # Actually modifying _save_node_recursively signature is cleaner.
-        # But to avoid massive diff, let's inject a wrapper or modify the existing function.
-        # Modifying existing function is better for recursion.
-        
-        # Redefining strategy: 
-        # We will use a mutable context to track progress across the existing recursive function.
-        
-        context = {'processed': 0, 'total': total_nodes}
-        
-        def _save_with_progress(node, parent, index):
-             # 1. Save this node
-             _save_node_recursively(node, parent, index)
+        return True, str(book_dir)
              
-             # 2. Update Progress
-             context['processed'] += 1
-             if progress_callback and context['total'] > 0:
-                 percent = context['processed'] / context['total']
-                 title = node.get('title', 'Untitled')
-                 progress_callback(percent, f"Saving: {title[:30]}...")
 
-        # We actually need to modify _save_node_recursively to let us hook in, 
-        # OR we just copy the logic. 
-        # Or, we Monkey Patch? No.
-        # Let's just refactor _save_node_recursively to accept a callback too?
-        # A simpler way: Iterate the tree slightly differently or just pass the callback down.
-        # Let's Rewrite _save_node_recursively to accept context.
-        pass
-        
-        # REAL IMPLEMENTATION START
-        # Since I cannot easily change _save_node_recursively in this Replace block without changing the whole file,
-        # I will augment _save_node_recursively to take an optional 'on_save_complete' callback?
-        # No, simpler: I will fully replace _save_node_recursively in the file since it is small enough.
-        
-        # See next Tool Call for full file replace or significant chunk replace.
-        raise NotImplementedError("Use MultiReplace for this complex change")
 
     except Exception as e:
         traceback.print_exc()

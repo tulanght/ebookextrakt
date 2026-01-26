@@ -12,13 +12,6 @@ Dự án này tuân theo [Keep a Changelog](https://keepachangelog.com/en/1.0.0/
 -   **Tiêu chuẩn Code**: Thiết lập luật cứng về File Header, Docstrings, và Type Hints (`coding_standards.md`).
 -   **Experiment**: Thử nghiệm thành công quy trình mới trên nhánh `exp/workflow-simulation`.
 
-### 🎨 Giao diện & Trải nghiệm (UI/UX)
--   **Sidebar**: Thêm nút "Hiện tại" và "Đóng sách" giúp điều hướng nhanh chóng.
--   **Hiệu năng**: Chế độ "Featherweight" cho ResultsView, sử dụng Lazy Loading giúp mở file lớn ngay lập tức.
--   **Dark Mode**: Kích hoạt giao diện tối mặc định.
-
-### 🐛 Sửa lỗi (Bug Fixes)
--   **ResultsView**: Khắc phục lỗi crash do dữ liệu tuple từ parser cũ, đảm bảo hiển thị nội dung chính xác.
 -   **Navigation**: Thêm thông báo "Coming Soon" cho các nút chưa có chức năng (Library, Settings).
 
 ### 🧹 Dọn dẹp & Tối ưu (Cleanup & Optimization)
@@ -29,6 +22,10 @@ Dự án này tuân theo [Keep a Changelog](https://keepachangelog.com/en/1.0.0/
 -   **Log Panel**: Khu vực hiển thị log trực tiếp trên giao diện, giúp theo dõi quá trình xử lý mà không cần mở console.
 -   **Loading Overlay**: Màn hình chờ chuyên nghiệp, hiển thị thanh tiến trình (Progress Bar) chi tiết khi Lưu file, không còn bị treo giao diện.
 -   **Thread-Safety**: Tách tác vụ Lưu trữ (Save) sang luồng riêng nền (background thread).
+
+### 🕒 Lịch sử & Tiện ích (History & Utils)
+-   **Extract History**: Tự động lưu lại các file đã mở/trích xuất gần đây.
+-   **Dashboard Quick Access**: Cho phép mở lại file nhanh chóng từ Dashboard mà không cần duyệt file lại.
 
 ## [0.1.0-alpha] - 2025-09-20
 

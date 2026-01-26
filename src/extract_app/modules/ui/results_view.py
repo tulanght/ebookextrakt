@@ -42,7 +42,7 @@ class ResultsView(ctk.CTkFrame):
         # 1. Metadata Panel (Left Side)
         self.metadata_panel = ctk.CTkFrame(self, width=280, corner_radius=10)
         self.metadata_panel.grid(row=0, column=0, padx=(0, 10), pady=0, sticky="ns")
-        self.metadata_panel.grid_propagate(False)
+        # self.metadata_panel.grid_propagate(False) # This was hiding content
         self.metadata_panel.grid_rowconfigure(3, weight=1) # Spacer
 
         self.cover_label = ctk.CTkLabel(self.metadata_panel, text="")

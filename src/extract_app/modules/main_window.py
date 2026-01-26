@@ -29,14 +29,14 @@ from customtkinter import filedialog
 
 # --- Local Application Imports ---
 from ..core import content_structurer, epub_parser, pdf_parser, storage_handler
-from ..shared import debug_logger  # Added for log subscription
+from ..core.history_manager import HistoryManager # New Import
+from ..shared import debug_logger
 from .ui.sidebar import SidebarFrame
 from .ui.top_bar import TopBarFrame
 from .ui.dashboard_view import DashboardView
 from .ui.results_view import ResultsView
-from .ui.log_panel import LogPanel # New Component
-from .ui.loading_overlay import LoadingOverlay # New Component
-# Note: HeaderFrame is no longer used in the new layout
+from .ui.log_panel import LogPanel
+from .ui.loading_overlay import LoadingOverlay
 
 class MainWindow(ctk.CTk):
     """
@@ -57,6 +57,9 @@ class MainWindow(ctk.CTk):
         self.recent_save_paths: List[str] = []
         self.results_queue = queue.Queue()
         self.progress_bar: ctk.CTkProgressBar | None = None
+        
+        # Managers
+        self.history_manager = HistoryManager() # Initialize Manager
         
         # UI Components
         self.sidebar: SidebarFrame
@@ -109,7 +112,7 @@ class MainWindow(ctk.CTk):
         self.content_area.grid_columnconfigure(0, weight=1)
 
         # 5. Log Panel (Bottom)
-        self.log_panel = LogPanel(self.right_container, height=150)
+        self.log_panel = LogPanel(self.right_container, height=60)
         self.log_panel.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 20))
         
         # Connect Logger
@@ -124,17 +127,39 @@ class MainWindow(ctk.CTk):
 
         # 6. Views
         self.dashboard_view = DashboardView(self.content_area, on_import=self._on_select_file)
+        # Manually inject the open_callback because I cannot change signature easily if generic
+        # OR update class init. Wait, I didn't update DashboardView init signature to accept callback.
+        # But I added update_history(..., open_callback).
+        
         self.results_view = ResultsView(self.content_area, on_extract=self._on_extract_content)
         
         # 7. Loading Overlay (Replaces old loading_frame)
         self.loading_overlay = LoadingOverlay(self.content_area)
-        # We don't pack it yet. `_show_view` will handle it.
+        
+        # Initial Load of History
+        self._update_dashboard_history()
+
+    def _update_dashboard_history(self):
+        """Reload history from manager and update dashboard."""
+        history = self.history_manager.load_history()
+        self.dashboard_view.update_history(history, self._on_open_recent_file)
+
+    def _on_open_recent_file(self, filepath: str):
+        """Handle opening a file from history."""
+        if not Path(filepath).exists():
+            if messagebox.askyesno("File không tồn tại", f"File không tìm thấy:\n{filepath}\nXóa khỏi lịch sử?"):
+                self.history_manager.remove_entry(filepath)
+                self._update_dashboard_history()
+            return
+            
+        self._start_parsing(filepath)
 
     def _on_navigate(self, view_name: str):
         """Handle sidebar navigation events."""
         self.sidebar.set_active_button(view_name)
         
         if view_name == "dashboard":
+            self._update_dashboard_history() # Refresh when returning to dashboard
             # Smart Navigation: If we have results, show them. Else show import screen.
             if self.current_results and self.current_results.get('content'):
                 self._show_view("results")
@@ -176,7 +201,10 @@ class MainWindow(ctk.CTk):
         )
         if not filepath:
             return
+        self._start_parsing(filepath)
 
+    def _start_parsing(self, filepath: str):
+        """Shared logic to start parsing a file."""
         filename = Path(filepath).name
         self.current_filepath = filepath
         self.top_bar.set_file_path(filepath)
@@ -235,15 +263,17 @@ class MainWindow(ctk.CTk):
                  return
             
             if self.current_results and self.current_results.get('content'):
+                # SUCCESS: Add to History
+                metadata = self.current_results.get('metadata', {})
+                title = metadata.get('title', Path(self.current_filepath).name)
+                self.history_manager.add_entry(self.current_filepath, title=title)
+                
                 self._show_view("results")
                 self.results_view.show_results(self.current_results)
                 
                 # Update Sidebar State
                 self.sidebar.show_active_book_controls()
                 self.sidebar.set_active_button("results")
-                
-                # IMPORTANT: We need to enable the 'Extract' button in ResultsView here
-                # accessing: self.results_view.set_extract_enabled(True) (To be implemented)
             else:
                  messagebox.showwarning("Cảnh báo", "Không tìm thấy nội dung hợp lệ.")
                  self._show_view("dashboard")
