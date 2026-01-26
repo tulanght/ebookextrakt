@@ -14,9 +14,9 @@ class LogPanel(ctk.CTkFrame):
     """
     A collapsible panel for displaying logs.
     """
-    def __init__(self, master, height=150, **kwargs):
+    def __init__(self, master, height=120, **kwargs):
         super().__init__(master, height=height, **kwargs)
-        self.pack_propagate(False)
+        self.grid_propagate(False)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
 

@@ -112,7 +112,7 @@ class MainWindow(ctk.CTk):
         self.content_area.grid_columnconfigure(0, weight=1)
 
         # 5. Log Panel (Bottom)
-        self.log_panel = LogPanel(self.right_container, height=60)
+        self.log_panel = LogPanel(self.right_container, height=120)
         self.log_panel.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 20))
         
         # Connect Logger
