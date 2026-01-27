@@ -30,6 +30,7 @@ from customtkinter import filedialog
 # --- Local Application Imports ---
 from ..core import content_structurer, epub_parser, pdf_parser, storage_handler
 from ..core.history_manager import HistoryManager # New Import
+from ..core.database import DatabaseManager # New Import
 from ..shared import debug_logger
 from .ui.sidebar import SidebarFrame
 from .ui.top_bar import TopBarFrame
@@ -59,7 +60,8 @@ class MainWindow(ctk.CTk):
         self.progress_bar: ctk.CTkProgressBar | None = None
         
         # Managers
-        self.history_manager = HistoryManager() # Initialize Manager
+        self.history_manager = HistoryManager() 
+        self.db_manager = DatabaseManager() # Initialize DB Manager
         
         # UI Components
         self.sidebar: SidebarFrame
@@ -306,18 +308,22 @@ class MainWindow(ctk.CTk):
         # Start Saving Thread
         threading.Thread(
             target=self._worker_save_content, 
-            args=(self.current_results.get('content', []), Path(target_dir), Path(self.current_filepath).name),
+            args=(self.current_results.get('content', []), Path(target_dir), Path(self.current_filepath).name, self.current_results.get('metadata', {}).get('author', 'Unknown')),
             daemon=True
         ).start()
 
-    def _worker_save_content(self, content, target_dir, book_name):
+    def _worker_save_content(self, content, target_dir, book_name, author):
         """Worker thread for saving content."""
         def progress_adapter(percent, msg):
             # Update UI from worker thread safely
             self.after(0, self.loading_overlay.update_status, "Đang lưu dữ liệu...", msg, percent)
 
         success, message = storage_handler.save_as_folders(
-            content, target_dir, book_name, progress_callback=progress_adapter
+            content, target_dir, book_name, 
+            progress_callback=progress_adapter,
+            db_manager=self.db_manager,
+            author=author,
+            original_path=self.current_filepath
         )
         
         # Schedule completion on main thread

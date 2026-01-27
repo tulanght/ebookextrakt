@@ -95,14 +95,69 @@ def _count_total_nodes(nodes: List[Dict[str, Any]]) -> int:
         count += _count_total_nodes(node.get('children', []))
     return count
 
+def _save_db_recursively(node: Dict[str, Any], db_manager: Any, chapter_id: int, order_index: int):
+    """
+    Recursively saves a node as an Article in the database.
+    """
+    subtitle = node.get('title', 'Untitled')
+    content_list = node.get('content', [])
+    
+    # Construct text content
+    full_text = []
+    
+    # We also need to save images to the images table so we need to know the article_id first
+    # But we haven't created it yet.
+    
+    # Extract text first
+    for content_type, data in content_list:
+        if content_type == 'text':
+             if isinstance(data, dict):
+                 full_text.append(data.get('content', ''))
+             else:
+                 full_text.append(str(data))
+        elif content_type == 'image':
+             # Placeholder for image in text
+             anchor = data.get('anchor', '')
+             if anchor:
+                 full_text.append(f"[Image: {Path(anchor).name}]")
+
+    text_content = "\n\n".join(full_text)
+    
+    # Create Article
+    article_id = db_manager.add_article(chapter_id, subtitle, text_content, order_index)
+    
+    # Save Images
+    for content_type, data in content_list:
+        if content_type == 'image' and isinstance(data, dict):
+             anchor = data.get('anchor', '')
+             caption = data.get('caption', '')
+             if anchor:
+                 db_manager.add_image(article_id, anchor, caption)
+                 
+    # Recurse for children (Flattening: Children become subsequential articles of the SAME chapter?
+    # Or do we treat them as part of this article? 
+    # Current DB schema (Chapter -> Article) implies 2 levels. 
+    # Logic: If I am a child of a Chapter, I am an Article. 
+    # If I am a child of an Article... I am just another Article in the same Chapter, maybe with a prefix?
+    # Let's just add them to the same Chapter for now to keep it simple.)
+    
+    children = node.get('children', [])
+    for i, child_node in enumerate(children):
+        # Continue adding to the SAME chapter, effectively flattening the tree under that chapter
+        _save_db_recursively(child_node, db_manager, chapter_id, order_index + 1000 + i) 
+
+
 def save_as_folders(
     structured_content: List[Dict[str, Any]], 
     base_path: Path, 
     book_name: str,
-    progress_callback: Any = None
+    progress_callback: Any = None,
+    db_manager: Any = None,
+    author: str = "Unknown",
+    original_path: str = ""
 ) -> tuple[bool, str]:
     """
-    Saves the structured content with optional progress reporting.
+    Saves the structured content with optional progress reporting and DB integration.
     """
     try:
         book_dir = base_path / Path(book_name).stem
@@ -119,8 +174,31 @@ def save_as_folders(
             }
             progress_callback(0.0, "Starting save...")
 
+        # 1. DB: Create Book
+        book_id = -1
+        if db_manager:
+            # Check for cover in content? Or metadata? (passed via args?) 
+            # MainWindow keeps metadata in current_results but we passed only author.
+            # Let's try to find cover from content if possible, or just ignore for now.
+            cover_path = "" # Todo: pass cover path
+            book_id = db_manager.add_book(book_name, author, original_path, cover_path)
+
         for i, root_node in enumerate(structured_content):
+            # File System Save
             _save_node_recursively(root_node, book_dir, i, progress_ctx)
+            
+            # DB Save (Top level nodes become Chapters)
+            if db_manager and book_id != -1:
+                title = root_node.get('title', f"Chapter {i+1}")
+                chapter_id = db_manager.add_chapter(book_id, title, i)
+                
+                # Check if root node ITSELF has content (it might be an article too)
+                if root_node.get('content'):
+                    _save_db_recursively(root_node, db_manager, chapter_id, 0)
+                
+                # Recurse children as Articles of this Chapter
+                for j, child in enumerate(root_node.get('children', [])):
+                     _save_db_recursively(child, db_manager, chapter_id, j+1)
 
         return True, str(book_dir)
              

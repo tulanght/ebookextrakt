@@ -34,10 +34,12 @@ def log(msg: str):
         try:
             print(f"[LOG] {msg}")
         except UnicodeEncodeError:
-            print(f"[LOG] {msg.encode('utf-8', errors='replace').decode('utf-8')}")
+            # Handle surrogates and other unprintable chars safely
+            safe_msg = msg.encode(sys.stdout.encoding or 'utf-8', errors='backslashreplace').decode(sys.stdout.encoding or 'utf-8')
+            print(f"[LOG] {safe_msg}")
             
         # 2. Append to file
-        with open(LOG_FILE, "a", encoding="utf-8") as f:
+        with open(LOG_FILE, "a", encoding="utf-8", errors="backslashreplace") as f:
             f.write(f"{msg}\n")
             
         # 3. Notify Listeners (UI)

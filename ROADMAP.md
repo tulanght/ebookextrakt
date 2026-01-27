@@ -22,7 +22,7 @@ Phát triển `ExtractPDF-EPUB App` thành một **Trung tâm Nội dung Thông 
 * **[x] Phát triển Thuật toán Tách "Bài viết" Thông minh:**
     * Xây dựng logic để tự động nhận diện và tách các bài viết lẻ bên trong một file chương lớn dựa trên các thẻ tiêu đề (`<h2>`, `<h3>`...) hoặc các dấu hiệu khác.
 
-* **[ ] Tích hợp Cơ sở dữ liệu SQLite:**
+* **[x] Tích hợp Cơ sở dữ liệu SQLite:**
     * Xây dựng module `database.py`.
     * Triển khai chức năng lưu trữ toàn bộ nội dung đã bóc tách (văn bản, đường dẫn ảnh, chú thích,...) vào một file CSDL SQLite trên máy.
 
