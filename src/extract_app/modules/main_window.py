@@ -31,6 +31,8 @@ from customtkinter import filedialog
 from ..core import content_structurer, epub_parser, pdf_parser, storage_handler
 from ..core.history_manager import HistoryManager # New Import
 from ..core.database import DatabaseManager # New Import
+from ..core.settings_manager import SettingsManager # New Import
+from ..core.translation_service import TranslationService # New Import
 from ..shared import debug_logger
 from .ui.sidebar import SidebarFrame
 from .ui.top_bar import TopBarFrame
@@ -63,6 +65,8 @@ class MainWindow(ctk.CTk):
         # Managers
         self.history_manager = HistoryManager() 
         self.db_manager = DatabaseManager() # Initialize DB Manager
+        self.settings_manager = SettingsManager()
+        self.translation_service = TranslationService(self.settings_manager.get_api_key())
         
         # UI Components
         self.sidebar: SidebarFrame
@@ -131,7 +135,12 @@ class MainWindow(ctk.CTk):
         # 6. Views
         self.dashboard_view = DashboardView(self.content_area, on_import=self._on_select_file)
         self.results_view = ResultsView(self.content_area, on_extract=self._on_extract_content)
-        self.library_view = LibraryView(self.content_area, db_manager=self.db_manager) # Initialize Library View
+        self.library_view = LibraryView(
+            self.content_area, 
+            db_manager=self.db_manager,
+            settings_manager=self.settings_manager,
+            translation_service=self.translation_service
+        ) # Initialize Library View
         
         # 7. Loading Overlay (Replaces old loading_frame)
         self.loading_overlay = LoadingOverlay(self.content_area)

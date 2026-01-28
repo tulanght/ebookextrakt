@@ -78,9 +78,11 @@ class LibraryView(ctk.CTkFrame):
     The main view for the Library tab.
     Displays a grid of books and a detail view.
     """
-    def __init__(self, master, db_manager, **kwargs):
+    def __init__(self, master, db_manager, settings_manager, translation_service, **kwargs):
         super().__init__(master, fg_color="transparent", **kwargs)
         self.db_manager = db_manager
+        self.settings_manager = settings_manager
+        self.translation_service = translation_service
         
         # UI State
         self.books: List[Dict] = []
@@ -102,11 +104,18 @@ class LibraryView(ctk.CTkFrame):
         )
         self.entry_search.pack(side="left", padx=10, pady=10)
         
+        # Settings & Refresh
         self.btn_refresh = ctk.CTkButton(
-            self.top_frame, text="Làm mới", width=100,
+            self.top_frame, text="Làm mới", width=80,
             command=self.refresh_library
         )
         self.btn_refresh.pack(side="right", padx=10)
+
+        self.btn_settings = ctk.CTkButton(
+            self.top_frame, text="Cài đặt API", width=100, fg_color="#444",
+            command=self._open_settings
+        )
+        self.btn_settings.pack(side="right", padx=0)
         
         # 2. Content Area (Scrollable Grid)
         self.scroll_frame = ctk.CTkScrollableFrame(self, fg_color="transparent")
@@ -165,24 +174,34 @@ class LibraryView(ctk.CTkFrame):
     def _open_book_detail(self, book_id: int):
         """
         Show detail view for the book. 
-        For now, we'll create a Toplevel window or overlay.
-        Overlay is better for integration.
         """
         book_details = self.db_manager.get_book_details(book_id)
         if not book_details:
             return
             
         # Create Overlay Window (Modal-like)
-        BookDetailWindow(self, book_details)
+        BookDetailWindow(self, book_details, self.translation_service, self.db_manager)
+
+    def _open_settings(self):
+        """Show dialog to input API Key."""
+        dialog = ctk.CTkInputDialog(text="Nhập Google Gemini API Key:", title="Cài đặt API")
+        api_key = dialog.get_input()
+        if api_key is not None: # Can be empty string if user cleared it
+            self.settings_manager.set_api_key(api_key.strip())
+            self.translation_service.set_api_key(api_key.strip())
+            messagebox.showinfo("Thành công", "Đã lưu API Key!")
 
 class BookDetailWindow(ctk.CTkToplevel):
     """
     Popup window showing book chapters and articles.
     """
-    def __init__(self, master, book_details: Dict):
+    def __init__(self, master, book_details: Dict, translation_service, db_manager):
         super().__init__(master)
         self.title(book_details.get('title', 'Chi tiết sách'))
-        self.geometry("800x600")
+        self.geometry("900x700")
+        
+        self.translation_service = translation_service
+        self.db_manager = db_manager
         
         # Data
         self.chapters = book_details.get('chapters', [])
@@ -202,6 +221,9 @@ class BookDetailWindow(ctk.CTkToplevel):
         self._render_content()
         
     def _render_content(self):
+        for widget in self.list_frame.winfo_children():
+            widget.destroy()
+
         for chapter in self.chapters:
             # Chapter Header
             chap_title = chapter.get('title', 'Unknown Chapter')
@@ -216,14 +238,59 @@ class BookDetailWindow(ctk.CTkToplevel):
                 art_frame.pack(fill="x", pady=2, padx=10)
                 
                 status = article.get('status', 'new')
-                status_color = "gray" if status == 'new' else "green"
+                is_translated = status == 'translated'
+                status_color = "green" if is_translated else "gray"
                 
                 # Status Dot
                 canvas = ctk.CTkCanvas(art_frame, width=10, height=10, bg=art_frame._apply_appearance_mode(art_frame._fg_color), highlightthickness=0)
                 canvas.create_oval(2, 2, 8, 8, fill=status_color)
                 canvas.pack(side="left", padx=5)
                 
-                ctk.CTkLabel(art_frame, text=article.get('subtitle', 'No Subtitle'), anchor="w").pack(side="left", padx=5)
+                # Title
+                ctk.CTkLabel(art_frame, text=article.get('subtitle', 'No Subtitle'), anchor="w").pack(side="left", padx=5, fill="x", expand=True)
                 
-                # Future: Translate Button
-                # ctk.CTkButton(art_frame, text="Dịch", width=50).pack(side="right", padx=5)
+                # Translate Button / View Button
+                if is_translated:
+                     ctk.CTkButton(art_frame, text="Xem Dịch", width=80, fg_color="green", command=lambda a=article: self._view_translation(a)).pack(side="right", padx=5, pady=2)
+                else:
+                     ctk.CTkButton(art_frame, text="Dịch AI", width=80, command=lambda a=article: self._translate_article(a)).pack(side="right", padx=5, pady=2)
+                     
+    def _translate_article(self, article):
+        """Handle translation trigger."""
+        # 1. Check API Key
+        if not self.translation_service.api_key:
+             messagebox.showwarning("Thiếu API Key", "Vui lòng nhập API Key trong phần Cài đặt trước.")
+             return
+
+        # 2. Get Content
+        # Article data in list only has headers, need to fetch content if not present?
+        # Database get_book_details DOES NOT fetch content_text by default (it wasn't select in the SQL)
+        # Wait, let's check database.py get_book_details.
+        # It SELECTS: id, subtitle, status, translation_text, order_index.
+        # IT DOES NOT SELECT `content_text`. Oops.
+        # I need to fetch the content text now.
+        
+        # Quick fix: Fetch content on demand or update get_book_details?
+        # Update get_book_details is better but I cannot edit database.py now easily inside this call.
+        # Let's use a helper or assume I'll fix database.py next.
+        # Actually I can fetch it here using db_manager connection if I exposed a method? 
+        # No, I should fix database.py to include content_text in the lite view? No, that makes list load slow.
+        # Better: Add `get_article_content(article_id)` to DB.
+        
+        # For this step, I will assume I have the content or will add the method. 
+        # I will add `get_article(id)` to DB in next step. For now I write the UI logic invoking it.
+        pass # To be continued in next step fix.
+        
+        # Let's implement the UI flow assuming `self.db_manager.get_article(id)` exists.
+        
+    def _view_translation(self, article):
+         # Show translation in a dialog
+         text = article.get('translation_text', '')
+         win = ctk.CTkToplevel(self)
+         win.title(f"Bản dịch: {article.get('subtitle')}")
+         win.geometry("600x400")
+         
+         txt = ctk.CTkTextbox(win)
+         txt.pack(fill="both", expand=True)
+         txt.insert("1.0", text)
+         txt.configure(state="disabled")

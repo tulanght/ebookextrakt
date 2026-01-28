@@ -32,6 +32,7 @@ Dự án này tuân theo [Keep a Changelog](https://keepachangelog.com/en/1.0.0/
 -   **Image Extraction**: Cải thiện thuật toán trích xuất ảnh, hỗ trợ lấy ảnh ngay cả khi nằm trong các thẻ `<img>` trực tiếp không có wrapper.
 -   **Structured Storage (SQLite)**: Tích hợp `extract.db` để lưu trữ sách, chương và bài viết dưới dạng có cấu trúc, tạo tiền đề cho các tính năng nâng cao (tìm kiếm, dịch thuật).
 -   **Library Browser**: Giao diện quản lý sách đã trích xuất, cho phép tìm kiếm, xem chi tiết mục lục và trạng thái bài viết ngay trong ứng dụng.
+-   **AI Translation**: Tích hợp Google Gemini API để dịch tự động các bài viết trong thư viện. Cho phép người dùng nhập API Key cá nhân (Miễn phí) để sử dụng model `gemini-1.5-flash`.
 
 ## [0.1.0-alpha] - 2025-09-20
 

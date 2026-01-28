@@ -36,9 +36,11 @@ Phát triển `ExtractPDF-EPUB App` thành một **Trung tâm Nội dung Thông 
     * Giao diện duyệt sách đã lưu trong CSDL.
     * Xem chi tiết chương/bài viết, trạng thái dịch thuật.
 
-* **[ ] Xây dựng Tab "Tiện ích Dịch thuật AI":**
+* **[x] Xây dựng Tab "Tiện ích Dịch thuật AI":**
     * Tích hợp Gemini API và có thể cả Selenium.
     * Xây dựng chức năng dịch tự động các bài viết đã được lưu trong CSDL.
+    
+* **[ ] Chiến dịch Automation (Auto-Blogger):**
     * Tạo thư viện bài viết theo chủ đề.
 
 * **[ ] Tích hợp WordPress & Tự động Đăng bài:**

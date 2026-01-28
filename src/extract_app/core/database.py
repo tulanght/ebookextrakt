@@ -172,6 +172,31 @@ class DatabaseManager:
             conn.commit()
         finally:
             conn.close()
+
+    def update_article_translation(self, article_id: int, translation_text: str, status: str):
+        """Updates translation text and status for an article."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE articles 
+                SET translation_text = ?, status = ?
+                WHERE id = ?
+            """, (translation_text, status, article_id))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_article_content(self, article_id: int) -> str:
+        """Retrieves content text for a specific article."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT content_text FROM articles WHERE id = ?", (article_id,))
+            result = cursor.fetchone()
+            return result['content_text'] if result else ""
+        finally:
+            conn.close()
             
     def get_all_books(self) -> List[Dict]:
         """Retrieves all books."""
