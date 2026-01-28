@@ -34,3 +34,8 @@ Output/
 # Large Samples & Debug
 test_samples/
 debug_*.py
+
+# User Data (Database, Settings, Sensitive Info)
+user_data/
+*.db
+settings.json
