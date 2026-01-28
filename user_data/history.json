@@ -1,8 +1,14 @@
 [
   {
+    "filepath": "C:\\Users\\AORUS\\Documents\\Projects\\ExtractPDF-EPUB\\test_samples\\Atlas Obscura (Joshua Foer,_ (Z-Library).epub",
+    "title": "Atlas Obscura",
+    "last_opened": "2026-01-28T16:40:28.917843",
+    "status": "opened"
+  },
+  {
     "filepath": "C:\\Users\\AORUS\\Documents\\Projects\\ExtractPDF-EPUB\\test_samples\\The Evolution of Sex Strategies of Males and Females (Kevin Teather) (Z-Library).pdf",
     "title": "The Evolution of Sex",
-    "last_opened": "2026-01-27T16:22:32.882783",
+    "last_opened": "2026-01-28T16:32:29.234377",
     "status": "opened"
   },
   {
@@ -15,12 +21,6 @@
     "filepath": "C:\\Users\\AORUS\\Documents\\Projects\\ExtractPDF-EPUB\\test_samples\\Atlas Obscura Wild Life An_ (Z-Library).epub",
     "title": "Atlas Obscura",
     "last_opened": "2026-01-26T17:30:15.266387",
-    "status": "opened"
-  },
-  {
-    "filepath": "C:\\Users\\AORUS\\Documents\\Projects\\ExtractPDF-EPUB\\test_samples\\Atlas Obscura (Joshua Foer,_ (Z-Library).epub",
-    "title": "Atlas Obscura",
-    "last_opened": "2026-01-26T17:19:58.091603",
     "status": "opened"
   },
   {

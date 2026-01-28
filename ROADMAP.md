@@ -32,6 +32,10 @@ Phát triển `ExtractPDF-EPUB App` thành một **Trung tâm Nội dung Thông 
 ### Giai đoạn 3: Mở rộng Hệ sinh thái & Tự động hóa (Ecosystem & Automation)
 *Mục tiêu: Kết nối dữ liệu đã xử lý với các nền tảng khác.*
 
+* **[x] Xây dựng "Thư viện" (Library Browser):**
+    * Giao diện duyệt sách đã lưu trong CSDL.
+    * Xem chi tiết chương/bài viết, trạng thái dịch thuật.
+
 * **[ ] Xây dựng Tab "Tiện ích Dịch thuật AI":**
     * Tích hợp Gemini API và có thể cả Selenium.
     * Xây dựng chức năng dịch tự động các bài viết đã được lưu trong CSDL.

@@ -38,6 +38,7 @@ from .ui.dashboard_view import DashboardView
 from .ui.results_view import ResultsView
 from .ui.log_panel import LogPanel
 from .ui.loading_overlay import LoadingOverlay
+from .ui.library_view import LibraryView # New Import
 
 class MainWindow(ctk.CTk):
     """
@@ -129,11 +130,8 @@ class MainWindow(ctk.CTk):
 
         # 6. Views
         self.dashboard_view = DashboardView(self.content_area, on_import=self._on_select_file)
-        # Manually inject the open_callback because I cannot change signature easily if generic
-        # OR update class init. Wait, I didn't update DashboardView init signature to accept callback.
-        # But I added update_history(..., open_callback).
-        
         self.results_view = ResultsView(self.content_area, on_extract=self._on_extract_content)
+        self.library_view = LibraryView(self.content_area, db_manager=self.db_manager) # Initialize Library View
         
         # 7. Loading Overlay (Replaces old loading_frame)
         self.loading_overlay = LoadingOverlay(self.content_area)
@@ -176,7 +174,9 @@ class MainWindow(ctk.CTk):
                      self._show_view("dashboard")
 
         elif view_name == "library":
-            messagebox.showinfo("Thông báo", "Tính năng Thư viện đang được phát triển.\nSẽ có trong phiên bản tới!")
+            self.library_view.refresh_library() # Refresh content
+            self._show_view("library")
+            
         elif view_name == "settings":
             messagebox.showinfo("Thông báo", "Tính năng Cài đặt đang được phát triển.\nSẽ có trong phiên bản tới!")
 
@@ -185,7 +185,7 @@ class MainWindow(ctk.CTk):
         # Hide all
         self.dashboard_view.grid_forget()
         self.results_view.grid_forget()
-        self.results_view.grid_forget()
+        self.library_view.grid_forget()
         self.loading_overlay.grid_forget()
         
         # Show selected
@@ -193,6 +193,8 @@ class MainWindow(ctk.CTk):
             self.dashboard_view.grid(row=0, column=0, sticky="nsew")
         elif view_name == "results":
             self.results_view.grid(row=0, column=0, sticky="nsew")
+        elif view_name == "library":
+            self.library_view.grid(row=0, column=0, sticky="nsew")
         elif view_name == "loading":
             self.loading_overlay.grid(row=0, column=0, sticky="nsew")
 

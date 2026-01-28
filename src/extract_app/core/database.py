@@ -57,12 +57,15 @@ class DatabaseManager:
         """)
 
         # 3. Articles Table (Leaf nodes of content)
+        # Added translation_text and status in v1.1
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS articles (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 chapter_id INTEGER,
                 subtitle TEXT,
-                content_text TEXT, 
+                content_text TEXT,
+                translation_text TEXT,
+                status TEXT DEFAULT 'new',
                 order_index INTEGER,
                 FOREIGN KEY(chapter_id) REFERENCES chapters(id) ON DELETE CASCADE
             )
@@ -80,6 +83,28 @@ class DatabaseManager:
         """)
 
         conn.commit()
+        conn.close()
+        
+        self._check_migrations()
+
+    def _check_migrations(self):
+        """Checks and applies necessary migrations (e.g. adding columns)."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        # Check articles table for 'status' column
+        cursor.execute("PRAGMA table_info(articles)")
+        columns = [row['name'] for row in cursor.fetchall()]
+        
+        if 'status' not in columns:
+            print("[DB] Applying migration: Adding status and translation_text to articles.")
+            try:
+                cursor.execute("ALTER TABLE articles ADD COLUMN status TEXT DEFAULT 'new'")
+                cursor.execute("ALTER TABLE articles ADD COLUMN translation_text TEXT")
+                conn.commit()
+            except Exception as e:
+                print(f"[DB] Migration failed: {e}")
+        
         conn.close()
 
     # --- CRUD Operations ---
@@ -155,5 +180,71 @@ class DatabaseManager:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM books ORDER BY added_date DESC")
             return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def search_books(self, query: str) -> List[Dict]:
+        """Search books by title or author."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            search_query = f"%{query}%"
+            cursor.execute("""
+                SELECT * FROM books 
+                WHERE title LIKE ? OR author LIKE ?
+                ORDER BY added_date DESC
+            """, (search_query, search_query))
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def delete_book(self, book_id: int):
+        """Deletes a book (and cascades to chapters/articles)."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            # Enable FK support just in case, though usually on by default in new sqlite3 lib
+            cursor.execute("PRAGMA foreign_keys = ON")
+            cursor.execute("DELETE FROM books WHERE id = ?", (book_id,))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_book_details(self, book_id: int) -> Dict[str, Any]:
+        """
+        Retrieves full book details: Metadata, Chapters, and Articles (lite info).
+        Used for the detail view.
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            
+            # 1. Book Info
+            cursor.execute("SELECT * FROM books WHERE id = ?", (book_id,))
+            book = cursor.fetchone()
+            if not book:
+                return {}
+            
+            result = dict(book)
+            result['chapters'] = []
+            
+            # 2. Chapters
+            cursor.execute("SELECT * FROM chapters WHERE book_id = ? ORDER BY order_index", (book_id,))
+            chapters = [dict(row) for row in cursor.fetchall()]
+            
+            # 3. Articles (for each chapter)
+            # Fetch all articles for this book efficiently via JOIN?
+            # Or just loop. Loop is fine for typical book size (~20-50 chapters).
+            for chapter in chapters:
+                cursor.execute("""
+                    SELECT id, subtitle, status, translation_text, order_index 
+                    FROM articles 
+                    WHERE chapter_id = ? 
+                    ORDER BY order_index
+                """, (chapter['id'],))
+                chapter['articles'] = [dict(row) for row in cursor.fetchall()]
+                result['chapters'].append(chapter)
+                
+            return result
         finally:
             conn.close()
