@@ -41,6 +41,8 @@ class DatabaseManager:
                 author TEXT,
                 cover_path TEXT,
                 source_path TEXT UNIQUE,
+                category TEXT,
+                tags TEXT,
                 added_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -57,7 +59,7 @@ class DatabaseManager:
         """)
 
         # 3. Articles Table (Leaf nodes of content)
-        # Added translation_text and status in v1.1
+        # Added translation_text and status in v1.1, is_leaf in v1.2
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS articles (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,7 +68,11 @@ class DatabaseManager:
                 content_text TEXT,
                 translation_text TEXT,
                 status TEXT DEFAULT 'new',
+                is_leaf INTEGER DEFAULT 1,
                 order_index INTEGER,
+                word_count INTEGER DEFAULT 0,
+                last_updated TIMESTAMP,
+                translated_at TIMESTAMP,
                 FOREIGN KEY(chapter_id) REFERENCES chapters(id) ON DELETE CASCADE
             )
         """)
@@ -82,28 +88,85 @@ class DatabaseManager:
             )
         """)
 
+        # 5. Translation Revisions Table (WordPress-style)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS translation_revisions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                article_id INTEGER,
+                content_text TEXT,
+                note TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE
+            )
+        """)
+
         conn.commit()
         conn.close()
         
         self._check_migrations()
+
+
 
     def _check_migrations(self):
         """Checks and applies necessary migrations (e.g. adding columns)."""
         conn = self._get_connection()
         cursor = conn.cursor()
         
-        # Check articles table for 'status' column
-        cursor.execute("PRAGMA table_info(articles)")
-        columns = [row['name'] for row in cursor.fetchall()]
+        # --- Books Table Migrations ---
+        cursor.execute("PRAGMA table_info(books)")
+        book_cols = [row['name'] for row in cursor.fetchall()]
         
-        if 'status' not in columns:
-            print("[DB] Applying migration: Adding status and translation_text to articles.")
+        if 'category' not in book_cols:
+             print("[DB] Migration: Adding category/tags to books file.")
+             try:
+                 cursor.execute("ALTER TABLE books ADD COLUMN category TEXT")
+                 cursor.execute("ALTER TABLE books ADD COLUMN tags TEXT")
+                 conn.commit()
+             except Exception as e:
+                 print(f"[DB] Book Migration failed: {e}")
+
+        # --- Articles Table Migrations ---
+        cursor.execute("PRAGMA table_info(articles)")
+        art_cols = [row['name'] for row in cursor.fetchall()]
+        
+        # Existing migrations
+        if 'status' not in art_cols:
+            print("[DB] Migration: Adding status/translation_text to articles.")
             try:
                 cursor.execute("ALTER TABLE articles ADD COLUMN status TEXT DEFAULT 'new'")
                 cursor.execute("ALTER TABLE articles ADD COLUMN translation_text TEXT")
                 conn.commit()
             except Exception as e:
-                print(f"[DB] Migration failed: {e}")
+                 print(f"[DB] Article Migration 1 failed: {e}")
+                 
+        if 'is_leaf' not in art_cols:
+            print("[DB] Migration: Adding is_leaf to articles.")
+            try:
+                cursor.execute("ALTER TABLE articles ADD COLUMN is_leaf INTEGER DEFAULT 1")
+                conn.commit()
+            except Exception as e:
+                 print(f"[DB] Article Migration 2 failed: {e}")
+
+        # New migrations (v0.2.0)
+        if 'word_count' not in art_cols:
+            print("[DB] Migration: Adding word_count/timestamps to articles.")
+            try:
+                cursor.execute("ALTER TABLE articles ADD COLUMN word_count INTEGER DEFAULT 0")
+                cursor.execute("ALTER TABLE articles ADD COLUMN last_updated TIMESTAMP")
+                cursor.execute("ALTER TABLE articles ADD COLUMN translated_at TIMESTAMP")
+                
+                # Update existing word counts
+                print("[DB] Calculating word counts for existing articles...")
+                cursor.execute("SELECT id, content_text FROM articles")
+                rows = cursor.fetchall()
+                for row in rows:
+                    wc = len(row['content_text'].split()) if row['content_text'] else 0
+                    cursor.execute("UPDATE articles SET word_count = ? WHERE id = ?", (wc, row['id']))
+                
+                conn.commit()
+                print("[DB] Optimization complete.")
+            except Exception as e:
+                 print(f"[DB] Article Migration 3 failed: {e}")
         
         conn.close()
 
@@ -146,15 +209,16 @@ class DatabaseManager:
         finally:
             conn.close()
 
-    def add_article(self, chapter_id: int, subtitle: str, content: str, order_index: int) -> int:
-        """Adds an article to a chapter."""
+    def add_article(self, chapter_id: int, subtitle: str, content: str, order_index: int, is_leaf: bool = True) -> int:
+        """Adds an article to a chapter. is_leaf=True means this is actual content, False means it's a container."""
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
+            word_count = len(content.split()) if content else 0
             cursor.execute("""
-                INSERT INTO articles (chapter_id, subtitle, content_text, order_index)
-                VALUES (?, ?, ?, ?)
-            """, (chapter_id, subtitle, content, order_index))
+                INSERT INTO articles (chapter_id, subtitle, content_text, order_index, is_leaf, word_count, last_updated)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, (chapter_id, subtitle, content, order_index, 1 if is_leaf else 0, word_count))
             conn.commit()
             return cursor.lastrowid
         finally:
@@ -173,17 +237,54 @@ class DatabaseManager:
         finally:
             conn.close()
 
-    def update_article_translation(self, article_id: int, translation_text: str, status: str):
-        """Updates translation text and status for an article."""
+    def get_article_images(self, article_id: int) -> List[Dict]:
+        """Retrieves images for an article."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT path, caption FROM images WHERE article_id = ?", (article_id,))
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def update_article_translation(self, article_id: int, translation_text: str, status: str, note: str = "User Save"):
+        """Updates translation text and status for an article, and saves a revision."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            # 1. Update main article
+            cursor.execute("""
+                UPDATE articles 
+                SET translation_text = ?, status = ?, translated_at = CURRENT_TIMESTAMP, last_updated = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (translation_text, status, article_id))
+            
+            # 2. Save revision
+            self._add_translation_revision(cursor, article_id, translation_text, note)
+            
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _add_translation_revision(self, cursor, article_id: int, content_text: str, note: str):
+        """Helper to add a revision record."""
+        cursor.execute("""
+            INSERT INTO translation_revisions (article_id, content_text, note)
+            VALUES (?, ?, ?)
+        """, (article_id, content_text, note))
+
+    def get_translation_revisions(self, article_id: int) -> List[Dict]:
+        """Retrieves revision history for an article."""
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute("""
-                UPDATE articles 
-                SET translation_text = ?, status = ?
-                WHERE id = ?
-            """, (translation_text, status, article_id))
-            conn.commit()
+                SELECT id, content_text, note, created_at 
+                FROM translation_revisions 
+                WHERE article_id = ? 
+                ORDER BY created_at DESC
+            """, (article_id,))
+            return [dict(row) for row in cursor.fetchall()]
         finally:
             conn.close()
 
@@ -197,6 +298,116 @@ class DatabaseManager:
             return result['content_text'] if result else ""
         finally:
             conn.close()
+    
+    def save_book_batch(self, book_title: str, author: str, source_path: str, 
+                        cover_path: str, structured_content: list) -> int:
+        """
+        Saves all book data (chapters, articles, images) in a SINGLE transaction.
+        This is MUCH faster than individual insert calls.
+        
+        structured_content is a tree: [{ title, content, children: [...] }, ...]
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            
+            # 1. Insert Book
+            cursor.execute("""
+                INSERT OR IGNORE INTO books (title, author, source_path, cover_path)
+                VALUES (?, ?, ?, ?)
+            """, (book_title, author, source_path, cover_path))
+            
+            if cursor.lastrowid and cursor.lastrowid > 0:
+                book_id = cursor.lastrowid
+            else:
+                cursor.execute("SELECT id FROM books WHERE source_path = ?", (source_path,))
+                result = cursor.fetchone()
+                book_id = result['id'] if result else -1
+            
+            if book_id == -1:
+                conn.rollback()
+                return -1
+            
+            # 2. Process each top-level node as a Chapter
+            for chap_idx, root_node in enumerate(structured_content):
+                chap_title = root_node.get('title', f"Chapter {chap_idx+1}")
+                cursor.execute("""
+                    INSERT INTO chapters (book_id, title, order_index)
+                    VALUES (?, ?, ?)
+                """, (book_id, chap_title, chap_idx))
+                chapter_id = cursor.lastrowid
+                
+                # Save root node if it has content
+                if root_node.get('content'):
+                    self._save_node_batch(cursor, chapter_id, root_node, 0, None)
+                
+                # Save children
+                for art_idx, child in enumerate(root_node.get('children', [])):
+                    self._save_node_batch(cursor, chapter_id, child, art_idx + 1, None)
+            
+            # 3. Commit everything at once
+            conn.commit()
+            return book_id
+            
+        except Exception as e:
+            conn.rollback()
+            print(f"[DB] Batch save error: {e}")
+            return -1
+        finally:
+            conn.close()
+    
+    def _save_node_batch(self, cursor, chapter_id: int, node: dict, order_index: int, parent_id: int):
+        """
+        Recursively saves a node and its children using an existing cursor.
+        Does NOT commit - caller handles transaction.
+        """
+        from pathlib import Path
+        
+        subtitle = node.get('title', 'Untitled')
+        content_list = node.get('content', [])
+        children = node.get('children', [])
+        is_leaf = len(children) == 0
+        
+        # Build text content
+        full_text = []
+        images_to_save = []
+        
+        for content_type, data in content_list:
+            if content_type == 'text':
+                if isinstance(data, dict):
+                    full_text.append(data.get('content', ''))
+                else:
+                    full_text.append(str(data))
+            elif content_type == 'image' and isinstance(data, dict):
+                anchor = data.get('anchor', '')
+                if anchor:
+                    full_text.append(f"[Image: {Path(anchor).name}]")
+                    images_to_save.append({
+                        'path': anchor,
+                        'caption': data.get('caption', '')
+                    })
+        
+        text_content = "\n\n".join(full_text)
+        
+        word_count = len(text_content.split()) if text_content else 0
+        
+        # Insert article
+        cursor.execute("""
+            INSERT INTO articles (chapter_id, subtitle, content_text, order_index, is_leaf, word_count, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, (chapter_id, subtitle, text_content, order_index, 1 if is_leaf else 0, word_count))
+        article_id = cursor.lastrowid
+        
+        # Insert images
+        for img in images_to_save:
+            cursor.execute("""
+                INSERT INTO images (article_id, path, caption)
+                VALUES (?, ?, ?)
+            """, (article_id, img['path'], img['caption']))
+        
+        # Recurse for children
+        for i, child_node in enumerate(children):
+            self._save_node_batch(cursor, chapter_id, child_node, order_index + 1000 + i, article_id)
             
     def get_all_books(self) -> List[Dict]:
         """Retrieves all books."""
@@ -262,7 +473,7 @@ class DatabaseManager:
             # Or just loop. Loop is fine for typical book size (~20-50 chapters).
             for chapter in chapters:
                 cursor.execute("""
-                    SELECT id, subtitle, status, translation_text, order_index 
+                    SELECT id, subtitle, status, translation_text, is_leaf, order_index, word_count, last_updated
                     FROM articles 
                     WHERE chapter_id = ? 
                     ORDER BY order_index

@@ -1,67 +1,64 @@
 # --------------------------------------------------------------------------------
 # Project: ExtractPDF-EPUB
 # File: src/extract_app/modules/ui/log_panel.py
-# Version: 1.0.0
-# Author: Antigravity
-# Description: A UI component for displaying application logs in real-time.
+# Version: 2.0.0
+# Description: Themed log panel with Dark Navy style.
 # --------------------------------------------------------------------------------
 
 import tkinter as tk
 from datetime import datetime
 import customtkinter as ctk
+from .theme import Colors, Fonts, Spacing
 
 class LogPanel(ctk.CTkFrame):
-    """
-    A collapsible panel for displaying logs.
-    """
+    """A panel for displaying application logs."""
     def __init__(self, master, height=120, **kwargs):
-        super().__init__(master, height=height, **kwargs)
+        super().__init__(
+            master, height=height, 
+            fg_color=Colors.BG_CARD, 
+            corner_radius=Spacing.CARD_RADIUS,
+            border_width=1, border_color=Colors.BORDER,
+            **kwargs
+        )
         self.grid_propagate(False)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
 
-        # 1. Header (Title + Buttons)
+        # Header
         self.header_frame = ctk.CTkFrame(self, height=30, fg_color="transparent")
-        self.header_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=2)
+        self.header_frame.grid(row=0, column=0, sticky="ew", padx=Spacing.MD, pady=(Spacing.SM, 0))
         
-        self.title_label = ctk.CTkLabel(
-            self.header_frame, text="Application Logs", font=("", 12, "bold")
-        )
-        self.title_label.pack(side="left", padx=5)
+        ctk.CTkLabel(
+            self.header_frame, text="📋  Logs", 
+            font=Fonts.BODY_BOLD, text_color=Colors.TEXT_MUTED
+        ).pack(side="left")
 
-        self.btn_clear = ctk.CTkButton(
-            self.header_frame, text="Clear", width=60, height=20, 
-            command=self.clear_logs, font=("", 10)
-        )
-        self.btn_clear.pack(side="right", padx=5)
+        ctk.CTkButton(
+            self.header_frame, text="Clear", width=50, height=20, 
+            fg_color="transparent", hover_color=Colors.BG_CARD_HOVER,
+            text_color=Colors.TEXT_MUTED,
+            command=self.clear_logs, font=Fonts.TINY,
+            corner_radius=4
+        ).pack(side="right")
 
-        # 2. Log Display (ScrolledText)
-        # Note: CTkTextbox is effectively a ScrolledText
+        # Log Text
         self.log_text = ctk.CTkTextbox(
-            self, font=("Consolas", 10), state="disabled", wrap="word"
+            self, font=("Consolas", 10), state="disabled", wrap="word",
+            fg_color=Colors.BG_INPUT, text_color=Colors.TEXT_MUTED,
+            border_width=0, corner_radius=Spacing.BUTTON_RADIUS,
+            scrollbar_button_color=Colors.BORDER,
         )
-        self.log_text.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
-        
-        # Tags for coloring (simulated/simple for now)
-        # CTkTextbox doesn't support full tag configuration like tk.Text easily without accessing internal widget
-        # For simplicity, we stick to monochrome or basic text usage for v1.0
+        self.log_text.grid(row=1, column=0, sticky="nsew", padx=Spacing.MD, pady=Spacing.SM)
 
     def write_log(self, message: str):
-        """
-        Append a message to the log panel.
-        Thread-safe wrapper usually needed, but tkinter requires main thread usage.
-        Consumers should ensure this is called from main thread or use after().
-        """
         timestamp = datetime.now().strftime("%H:%M:%S")
         formatted_message = f"[{timestamp}] {message}\n"
-        
         self.log_text.configure(state="normal")
         self.log_text.insert("end", formatted_message)
-        self.log_text.see("end") # Auto-scroll
+        self.log_text.see("end")
         self.log_text.configure(state="disabled")
 
     def clear_logs(self):
-        """Clear all logs."""
         self.log_text.configure(state="normal")
         self.log_text.delete("1.0", "end")
         self.log_text.configure(state="disabled")

@@ -123,6 +123,25 @@ def _build_tree(
             # --- Recurse for children ---
             children_nodes = _build_tree(children, book, temp_image_dir, all_anchor_ids)
             
+            # --- Option A: Skip content for container nodes ---
+            # If this node has children, it's a container. To avoid duplication,
+            # we only keep content for LEAF nodes.
+            if children_nodes and content:
+                # Calculate skipped content size for logging
+                skipped_text_size = sum(
+                    len(data.get('content', '') if isinstance(data, dict) else str(data))
+                    for ctype, data in content if ctype == 'text'
+                )
+                skipped_image_count = sum(1 for ctype, _ in content if ctype == 'image')
+                
+                if skipped_text_size > 1000 or skipped_image_count > 5:
+                    debug_logger.log(
+                        f"  [INFO] Skipping container intro for '{title}': "
+                        f"~{skipped_text_size} chars, {skipped_image_count} images"
+                    )
+                
+                content = []  # Clear content for container nodes
+            
             node = {
                 'title': title,
                 'content': content,

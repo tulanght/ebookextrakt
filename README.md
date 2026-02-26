@@ -1,4 +1,4 @@
-# ExtractPDF-EPUB App v0.1.0-alpha
+# ExtractPDF-EPUB App v0.2.0 (Beta)
 
 **[Xem Lịch sử Thay đổi (Changelog)](CHANGELOG.md) | [Xem Lộ trình Phát triển (Roadmap)](ROADMAP.md) | [Xem Quy trình Làm việc (Workflow)](WORKFLOW.md) | [Ghi chú Kỹ thuật](TECHNICAL_NOTES.md)**
 
@@ -17,6 +17,11 @@ Một công cụ desktop được xây dựng bằng Python và CustomTkinter, c
 3.  **Bóc tách Toàn diện:** Với mỗi chương đã xác định, ứng dụng sẽ quét và trích xuất tuần tự toàn bộ nội dung, bao gồm các khối **văn bản** và các file **hình ảnh**. Hình ảnh được tạm thời lưu vào một thư mục đệm.
 4.  **Xác minh Trực quan:** Toàn bộ cấu trúc đã bóc tách (tiêu đề chương, văn bản, và "mỏ neo" đại diện cho hình ảnh) được hiển thị trên giao diện chính để người dùng kiểm tra và xác nhận tính toàn vẹn của dữ liệu.
 5.  **Lưu trữ có Tổ chức:** Người dùng có thể lưu toàn bộ kết quả ra máy tính. Ứng dụng sẽ tự động tạo một thư mục gốc mang tên sách, và bên trong là các thư mục con được đặt tên theo từng chương. Mỗi thư mục chương chứa một file `content.txt` với toàn bộ văn bản và các file hình ảnh tương ứng.
+
+### ✨ Tính Năng Mới (v0.2.0)
+- **Quản lý Thư viện:** Duyệt, tìm kiếm và quản lý sách đã trích xuất ngay trong ứng dụng.
+- **AI Translation:** Tích hợp Google Gemini để dịch thuật nội dung sách (Cần API Key).
+- **Cơ sở dữ liệu SQLite:** Lưu trữ dữ liệu có cấu trúc để truy xuất nhanh hơn.
 
 ---
 ## Cấu trúc Dự án

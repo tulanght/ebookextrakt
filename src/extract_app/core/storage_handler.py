@@ -14,6 +14,19 @@ import shutil
 import traceback
 from pathlib import Path
 from typing import List, Dict, Any
+from PIL import Image
+
+def _convert_to_webp(source_path: Path, dest_path: Path) -> bool:
+    """Converts an image to WebP format."""
+    try:
+        with Image.open(source_path) as img:
+             # Convert to RGB if RGBA/P to avoid issues (optional, but good for WebP)
+             # img.save automatically handles some, but let's be safe if needed
+             img.save(dest_path, "WEBP", quality=80)
+        return True
+    except Exception as e:
+        print(f"[Storage] Image conversion failed: {e}")
+        return False
 
 
 def _save_node_recursively(node: Dict[str, Any], parent_path: Path, index: int, progress_ctx: Dict = None):
@@ -63,9 +76,18 @@ def _save_node_recursively(node: Dict[str, Any], parent_path: Path, index: int, 
                     if anchor_path_str in seen_images:
                         dest_filename = seen_images[anchor_path_str]
                     else:
-                        # Copy the image file
-                        dest_filename = f"image_{image_counter:03d}{anchor_path.suffix}"
-                        shutil.copy2(anchor_path, current_path / dest_filename)
+                        # Convert/Copy the image file
+                        # Use .webp extension
+                        dest_filename = f"image_{image_counter:03d}.webp"
+                        dest_path = current_path / dest_filename
+                        
+                        if _convert_to_webp(anchor_path, dest_path):
+                            pass
+                        else:
+                            # Fallback to original if conversion fails
+                            dest_filename = f"image_{image_counter:03d}{anchor_path.suffix}"
+                            shutil.copy2(anchor_path, current_path / dest_filename)
+                            
                         seen_images[anchor_path_str] = dest_filename
                         image_counter += 1
 
@@ -101,6 +123,10 @@ def _save_db_recursively(node: Dict[str, Any], db_manager: Any, chapter_id: int,
     """
     subtitle = node.get('title', 'Untitled')
     content_list = node.get('content', [])
+    children = node.get('children', [])
+    
+    # Determine if this is a leaf node (no children = actual content)
+    is_leaf = len(children) == 0
     
     # Construct text content
     full_text = []
@@ -123,8 +149,8 @@ def _save_db_recursively(node: Dict[str, Any], db_manager: Any, chapter_id: int,
 
     text_content = "\n\n".join(full_text)
     
-    # Create Article
-    article_id = db_manager.add_article(chapter_id, subtitle, text_content, order_index)
+    # Create Article (with is_leaf flag)
+    article_id = db_manager.add_article(chapter_id, subtitle, text_content, order_index, is_leaf)
     
     # Save Images
     for content_type, data in content_list:
@@ -134,14 +160,7 @@ def _save_db_recursively(node: Dict[str, Any], db_manager: Any, chapter_id: int,
              if anchor:
                  db_manager.add_image(article_id, anchor, caption)
                  
-    # Recurse for children (Flattening: Children become subsequential articles of the SAME chapter?
-    # Or do we treat them as part of this article? 
-    # Current DB schema (Chapter -> Article) implies 2 levels. 
-    # Logic: If I am a child of a Chapter, I am an Article. 
-    # If I am a child of an Article... I am just another Article in the same Chapter, maybe with a prefix?
-    # Let's just add them to the same Chapter for now to keep it simple.)
-    
-    children = node.get('children', [])
+    # Recurse for children (Flattening: Children become subsequential articles of the SAME chapter)
     for i, child_node in enumerate(children):
         # Continue adding to the SAME chapter, effectively flattening the tree under that chapter
         _save_db_recursively(child_node, db_manager, chapter_id, order_index + 1000 + i) 
@@ -154,7 +173,8 @@ def save_as_folders(
     progress_callback: Any = None,
     db_manager: Any = None,
     author: str = "Unknown",
-    original_path: str = ""
+    original_path: str = "",
+    cover_path: str = ""
 ) -> tuple[bool, str]:
     """
     Saves the structured content with optional progress reporting and DB integration.
@@ -174,31 +194,31 @@ def save_as_folders(
             }
             progress_callback(0.0, "Starting save...")
 
-        # 1. DB: Create Book
-        book_id = -1
-        if db_manager:
-            # Check for cover in content? Or metadata? (passed via args?) 
-            # MainWindow keeps metadata in current_results but we passed only author.
-            # Let's try to find cover from content if possible, or just ignore for now.
-            cover_path = "" # Todo: pass cover path
-            book_id = db_manager.add_book(book_name, author, original_path, cover_path)
-
+        # 1. Save to File System first (fast)
         for i, root_node in enumerate(structured_content):
-            # File System Save
             _save_node_recursively(root_node, book_dir, i, progress_ctx)
+        
+        # 2. DB Batch Save (single transaction - fast)
+        if db_manager:
+            # Handle Cover Persistence
+            final_cover_path = ""
+            if cover_path and Path(cover_path).exists():
+                try:
+                    # Copy cover to book directory
+                    cover_src = Path(cover_path)
+                    cover_dest = book_dir / f"cover{cover_src.suffix}"
+                    shutil.copy2(cover_src, cover_dest)
+                    final_cover_path = str(cover_dest)
+                except Exception as e:
+                    print(f"[Storage] Failed to copy cover: {e}")
+                    final_cover_path = cover_path # Fallback
             
-            # DB Save (Top level nodes become Chapters)
-            if db_manager and book_id != -1:
-                title = root_node.get('title', f"Chapter {i+1}")
-                chapter_id = db_manager.add_chapter(book_id, title, i)
-                
-                # Check if root node ITSELF has content (it might be an article too)
-                if root_node.get('content'):
-                    _save_db_recursively(root_node, db_manager, chapter_id, 0)
-                
-                # Recurse children as Articles of this Chapter
-                for j, child in enumerate(root_node.get('children', [])):
-                     _save_db_recursively(child, db_manager, chapter_id, j+1)
+            # cover_path is now passed in argument
+            book_id = db_manager.save_book_batch(
+                book_name, author, original_path, final_cover_path, structured_content
+            )
+            if book_id == -1:
+                print("[Storage] Warning: Database save failed, but files were saved.")
 
         return True, str(book_dir)
              

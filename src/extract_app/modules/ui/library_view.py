@@ -11,13 +11,27 @@ from tkinter import messagebox
 from typing import Callable, List, Dict, Any
 import customtkinter as ctk
 from PIL import Image
+from pathlib import Path
+from ...core import webview_generator
+import os
+import webbrowser
+import shutil
+from .theme import Colors, Fonts, Spacing
+from .editor_view import DualViewEditor
 
 class BookCard(ctk.CTkFrame):
     """
-    A card widget representing a single book in the grid.
+    A card widget representing a single book in the grid (Dark Navy theme).
     """
     def __init__(self, master, book_data: Dict, on_click: Callable[[int], None], on_delete: Callable[[int], None], **kwargs):
-        super().__init__(master, **kwargs)
+        super().__init__(
+            master, 
+            fg_color=Colors.BG_CARD, 
+            corner_radius=Spacing.CARD_RADIUS, 
+            border_width=1, 
+            border_color=Colors.BORDER,
+            **kwargs
+        )
         self.book_data = book_data
         self.on_click = on_click
         self.on_delete = on_delete
@@ -25,44 +39,83 @@ class BookCard(ctk.CTkFrame):
         self.item_id = book_data['id']
         title = book_data.get('title', 'Unknown Title')
         author = book_data.get('author', 'Unknown Author')
+        cover_path = book_data.get('cover_path', '')
         
-        # Style
-        self.configure(fg_color=("gray85", "gray25"), corner_radius=10)
+        # Hover Effect Triggers
+        self.bind("<Enter>", self._on_enter)
+        self.bind("<Leave>", self._on_leave)
         
-        # Layout
+        # Layout: Image (Top) -> Info (Bottom)
         self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=1) # Image area
+        self.grid_rowconfigure(1, weight=0) # Text area
         
-        # 1. Title (Clickable)
+        # 1. Cover Image
+        self.cover_image = None
+        if cover_path and Path(cover_path).exists():
+            try:
+                img = Image.open(cover_path)
+                self.cover_image = ctk.CTkImage(light_image=img, dark_image=img, size=(120, 160))
+            except Exception as e:
+                print(f"Error loading cover: {e}")
+        
+        if self.cover_image:
+            self.lbl_cover = ctk.CTkLabel(self, text="", image=self.cover_image)
+        else:
+            self.lbl_cover = ctk.CTkLabel(
+                self, text="📚\nNo Cover", 
+                font=Fonts.H3,
+                fg_color=Colors.BG_APP,
+                text_color=Colors.TEXT_MUTED,
+                corner_radius=10,
+                width=120, height=160
+            )
+            
+        self.lbl_cover.grid(row=0, column=0, pady=(Spacing.LG, Spacing.SM), padx=Spacing.LG)
+        self._bind_click(self.lbl_cover)
+        
+        # 2. Info Frame
+        self.info_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.info_frame.grid(row=1, column=0, sticky="ew", padx=Spacing.MD, pady=(0, Spacing.LG))
+        self.info_frame.grid_columnconfigure(0, weight=1)
+        
+        # Title
         self.title_label = ctk.CTkLabel(
-            self, text=title, font=("Segoe UI", 16, "bold"), 
-            anchor="w", justify="left", wraplength=180
+            self.info_frame, text=title, font=Fonts.BODY_BOLD, 
+            text_color=Colors.TEXT_PRIMARY,
+            anchor="center", justify="center", wraplength=140
         )
-        self.title_label.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 5))
+        self.title_label.pack(fill="x", pady=(0, 2))
+        self._bind_click(self.title_label)
         
-        # Make card clickable
-        self.title_label.bind("<Button-1>", self._handle_click_event)
-        self.bind("<Button-1>", self._handle_click_event)
-        
-        # 2. Author
+        # Author
         self.author_label = ctk.CTkLabel(
-            self, text=author, font=("Segoe UI", 12),
-            text_color="gray", anchor="w"
+            self.info_frame, text=author, font=Fonts.SMALL,
+            text_color=Colors.TEXT_MUTED
         )
-        self.author_label.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
-        self.author_label.bind("<Button-1>", self._handle_click_event)
+        self.author_label.pack(fill="x", pady=(0, Spacing.SM))
+        self._bind_click(self.author_label)
 
-        # 3. Actions Frame
-        self.actions_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.actions_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
-        
         # Delete Button
         self.btn_delete = ctk.CTkButton(
-            self.actions_frame, text="Xóa", width=50, height=24,
-            fg_color="transparent", border_width=1, border_color="red", text_color="red",
-            hover_color="darkred",
+            self.info_frame, text="🗑 Xóa", width=60, height=24,
+            fg_color="transparent", text_color=Colors.DANGER,
+            hover_color=Colors.DANGER_HOVER,
+            font=Fonts.TINY,
             command=self._handle_delete
         )
-        self.btn_delete.pack(side="right", padx=5)
+        self.btn_delete.pack(pady=2)
+
+    def _bind_click(self, widget):
+        widget.bind("<Button-1>", self._handle_click_event)
+        widget.bind("<Enter>", self._on_enter)
+        widget.bind("<Leave>", self._on_leave)
+
+    def _on_enter(self, event=None):
+        self.configure(border_color=Colors.PRIMARY, fg_color=Colors.BG_CARD_HOVER)
+
+    def _on_leave(self, event=None):
+        self.configure(border_color=Colors.BORDER, fg_color=Colors.BG_CARD)
 
     def _handle_click_event(self, event=None):
         if self.on_click:
@@ -75,7 +128,7 @@ class BookCard(ctk.CTkFrame):
 
 class LibraryView(ctk.CTkFrame):
     """
-    The main view for the Library tab.
+    The main view for the Library tab (Dark Navy).
     Displays a grid of books and a detail view.
     """
     def __init__(self, master, db_manager, settings_manager, translation_service, **kwargs):
@@ -84,51 +137,49 @@ class LibraryView(ctk.CTkFrame):
         self.settings_manager = settings_manager
         self.translation_service = translation_service
         
-        # UI State
         self.books: List[Dict] = []
         
-        # Layout
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
         
         # 1. Top Bar (Search & Refresh)
         self.top_frame = ctk.CTkFrame(self, height=50, fg_color="transparent")
-        self.top_frame.grid(row=0, column=0, sticky="ew", padx=0, pady=(0, 10))
+        self.top_frame.grid(row=0, column=0, sticky="ew", padx=0, pady=(0, Spacing.MD))
         
         self.search_var = tk.StringVar()
         self.search_var.trace("w", self._on_search_change)
         
         self.entry_search = ctk.CTkEntry(
             self.top_frame, placeholder_text="Tìm kiếm sách...", 
-            textvariable=self.search_var, width=300
+            textvariable=self.search_var, width=300,
+            fg_color=Colors.BG_INPUT, border_color=Colors.BORDER,
+            text_color=Colors.TEXT_PRIMARY,
+            height=36, corner_radius=Spacing.BUTTON_RADIUS
         )
-        self.entry_search.pack(side="left", padx=10, pady=10)
+        self.entry_search.pack(side="left", padx=Spacing.MD, pady=Spacing.MD)
         
-        # Settings & Refresh
+        # Refresh Button
         self.btn_refresh = ctk.CTkButton(
-            self.top_frame, text="Làm mới", width=80,
-            command=self.refresh_library
+            self.top_frame, text="🔄 Làm mới", width=100,
+            fg_color=Colors.BG_CARD, border_width=1, border_color=Colors.BORDER,
+            text_color=Colors.TEXT_PRIMARY, hover_color=Colors.BG_CARD_HOVER,
+            command=self.refresh_library,
+            height=36, corner_radius=Spacing.BUTTON_RADIUS
         )
-        self.btn_refresh.pack(side="right", padx=10)
-
-        self.btn_settings = ctk.CTkButton(
-            self.top_frame, text="Cài đặt API", width=100, fg_color="#444",
-            command=self._open_settings
-        )
-        self.btn_settings.pack(side="right", padx=0)
+        self.btn_refresh.pack(side="right", padx=Spacing.XL)
         
         # 2. Content Area (Scrollable Grid)
-        self.scroll_frame = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self.scroll_frame = ctk.CTkScrollableFrame(
+            self, fg_color="transparent",
+            scrollbar_button_color=Colors.BORDER,
+            scrollbar_button_hover_color=Colors.TEXT_MUTED
+        )
         self.scroll_frame.grid(row=1, column=0, sticky="nsew")
-        
-        # Setup Grid Columns for Book Cards
-        self.scroll_frame.grid_columnconfigure((0, 1, 2), weight=1)
+        self.scroll_frame.grid_columnconfigure((0, 1, 2, 3), weight=1) # 4 columns looks better on large screens
 
-        # Initial Load
         self.refresh_library()
 
     def refresh_library(self):
-        """Fetch books from DB and render."""
         query = self.search_var.get()
         if query:
             self.books = self.db_manager.search_books(query)
@@ -141,18 +192,20 @@ class LibraryView(ctk.CTkFrame):
         self.refresh_library()
 
     def _render_books(self):
-        """Render book cards."""
         # Clear existing
         for widget in self.scroll_frame.winfo_children():
             widget.destroy()
             
         if not self.books:
-            lbl = ctk.CTkLabel(self.scroll_frame, text="Không tìm thấy sách nào trong thư viện.")
+            lbl = ctk.CTkLabel(
+                self.scroll_frame, text="Không tìm thấy sách nào trong thư viện.",
+                text_color=Colors.TEXT_MUTED, font=Fonts.BODY
+            )
             lbl.pack(pady=50)
             return
 
-        # Render Grid (3 columns)
-        cols = 3
+        # Render Grid (4 columns)
+        cols = 4
         for i, book in enumerate(self.books):
             row = i // cols
             col = i % cols
@@ -163,64 +216,91 @@ class LibraryView(ctk.CTkFrame):
                 on_click=self._open_book_detail,
                 on_delete=self._delete_book
             )
-            card.grid(row=row, column=col, sticky="nsew", padx=10, pady=10)
+            card.grid(row=row, column=col, sticky="nsew", padx=Spacing.MD, pady=Spacing.MD)
 
     def _delete_book(self, book_id: int):
-        """Confirm and delete book."""
         if messagebox.askyesno("Xác nhận xóa", "Bạn có chắc muốn xóa sách này khỏi thư viện?\n(File gốc vẫn được giữ nguyên)"):
             self.db_manager.delete_book(book_id)
             self.refresh_library()
 
     def _open_book_detail(self, book_id: int):
-        """
-        Show detail view for the book. 
-        """
         book_details = self.db_manager.get_book_details(book_id)
         if not book_details:
             return
             
-        # Create Overlay Window (Modal-like)
-        BookDetailWindow(self, book_details, self.translation_service, self.db_manager)
+        BookDetailWindow(self, book_details, self.translation_service, self.db_manager, self.settings_manager)
 
     def _open_settings(self):
-        """Show dialog to input API Key."""
-        dialog = ctk.CTkInputDialog(text="Nhập Google Gemini API Key:", title="Cài đặt API")
-        api_key = dialog.get_input()
-        if api_key is not None: # Can be empty string if user cleared it
-            self.settings_manager.set_api_key(api_key.strip())
-            self.translation_service.set_api_key(api_key.strip())
-            messagebox.showinfo("Thành công", "Đã lưu API Key!")
+        from .settings_window import SettingsWindow
+        SettingsWindow(self, self.settings_manager, self.translation_service)
 
 class BookDetailWindow(ctk.CTkToplevel):
     """
-    Popup window showing book chapters and articles.
+    Popup window showing book chapters and articles (Dark Navy theme).
     """
-    def __init__(self, master, book_details: Dict, translation_service, db_manager):
-        super().__init__(master)
+    def __init__(self, master, book_details: Dict, translation_service, db_manager, settings_manager):
+        super().__init__(master, fg_color=Colors.BG_APP)
         self.title(book_details.get('title', 'Chi tiết sách'))
         self.geometry("900x700")
         
         self.translation_service = translation_service
         self.db_manager = db_manager
+        self.settings_manager = settings_manager
         
         # Data
+        self.book_id = book_details.get('id')
         self.chapters = book_details.get('chapters', [])
         
         # UI
         # Header
-        lbl_title = ctk.CTkLabel(self, text=book_details.get('title', ''), font=("Segoe UI", 20, "bold"))
-        lbl_title.pack(pady=(20, 5))
+        lbl_title = ctk.CTkLabel(
+            self, text=book_details.get('title', ''), 
+            font=Fonts.H2, text_color=Colors.TEXT_PRIMARY
+        )
+        lbl_title.pack(pady=(Spacing.XL, Spacing.SM))
         
-        lbl_author = ctk.CTkLabel(self, text=book_details.get('author', ''), font=("Segoe UI", 14))
-        lbl_author.pack(pady=(0, 20))
+        lbl_author = ctk.CTkLabel(
+            self, text=book_details.get('author', ''), 
+            font=Fonts.BODY, text_color=Colors.TEXT_MUTED
+        )
+        lbl_author.pack(pady=(0, Spacing.XL))
+        
+        # Tools Bar
+        self.tools_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.tools_frame.pack(fill="x", padx=Spacing.XL, pady=(0, Spacing.MD))
+        
+        self.btn_webview = ctk.CTkButton(
+            self.tools_frame, text="📖 Đọc Thử (Webview)", 
+            font=Fonts.BODY_BOLD, fg_color=Colors.PRIMARY, text_color=Colors.TEXT_PRIMARY,
+            hover_color=Colors.PRIMARY_HOVER, corner_radius=Spacing.BUTTON_RADIUS,
+            command=self._generate_and_open_webview
+        )
+        self.btn_webview.pack(side="left")
         
         # Scrollable List of Content
-        self.list_frame = ctk.CTkScrollableFrame(self)
-        self.list_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        self.list_frame = ctk.CTkScrollableFrame(
+            self, fg_color=Colors.BG_CARD, corner_radius=Spacing.CARD_RADIUS,
+            scrollbar_button_color=Colors.BORDER, scrollbar_button_hover_color=Colors.TEXT_MUTED
+        )
+        self.list_frame.pack(fill="both", expand=True, padx=Spacing.XL, pady=Spacing.XL)
         
         self._render_content()
         
+        # Ensure window appears on top (Windows fix)
+        self.attributes('-topmost', True)
+        self.after(100, lambda: self.attributes('-topmost', False))
+        self.focus_force()
+        
     def _render_content(self):
+        # Refetch data to get updated status
+        if self.book_id:
+            fresh_data = self.db_manager.get_book_details(self.book_id)
+            if fresh_data:
+                self.chapters = fresh_data.get('chapters', [])
+        
+        if not self.winfo_exists() or not self.list_frame.winfo_exists():
+            return
+
         for widget in self.list_frame.winfo_children():
             widget.destroy()
 
@@ -228,69 +308,222 @@ class BookDetailWindow(ctk.CTkToplevel):
             # Chapter Header
             chap_title = chapter.get('title', 'Unknown Chapter')
             frame = ctk.CTkFrame(self.list_frame, fg_color="transparent")
-            frame.pack(fill="x", pady=5)
+            frame.pack(fill="x", pady=Spacing.SM)
             
-            ctk.CTkLabel(frame, text=chap_title, font=("Segoe UI", 16, "bold"), anchor="w").pack(fill="x")
+            ctk.CTkLabel(
+                frame, text=chap_title, font=Fonts.H3, 
+                text_color=Colors.TEXT_PRIMARY, anchor="w"
+            ).pack(fill="x", pady=Spacing.SM)
             
             # Articles
             for article in chapter.get('articles', []):
-                art_frame = ctk.CTkFrame(self.list_frame, fg_color=("gray90", "gray20"))
-                art_frame.pack(fill="x", pady=2, padx=10)
+                art_frame = ctk.CTkFrame(
+                    self.list_frame, fg_color=Colors.BG_APP, 
+                    corner_radius=Spacing.BUTTON_RADIUS
+                )
+                art_frame.pack(fill="x", pady=2, padx=Spacing.MD)
                 
                 status = article.get('status', 'new')
                 is_translated = status == 'translated'
-                status_color = "green" if is_translated else "gray"
+                status_color = Colors.SUCCESS if is_translated else Colors.TEXT_MUTED
                 
                 # Status Dot
-                canvas = ctk.CTkCanvas(art_frame, width=10, height=10, bg=art_frame._apply_appearance_mode(art_frame._fg_color), highlightthickness=0)
+                canvas = ctk.CTkCanvas(art_frame, width=10, height=10, bg=Colors.BG_APP, highlightthickness=0)
                 canvas.create_oval(2, 2, 8, 8, fill=status_color)
-                canvas.pack(side="left", padx=5)
+                canvas.pack(side="left", padx=Spacing.SM)
                 
-                # Title
-                ctk.CTkLabel(art_frame, text=article.get('subtitle', 'No Subtitle'), anchor="w").pack(side="left", padx=5, fill="x", expand=True)
+                # Right Side Container (Meta + Buttons)
+                right_frame = ctk.CTkFrame(art_frame, fg_color="transparent")
+                right_frame.pack(side="right", fill="y", padx=Spacing.SM)
+
+                # Word Count Display
+                word_count = article.get('word_count', 0) or 0
+                translated_at = article.get('translated_at')
                 
-                # Translate Button / View Button
-                if is_translated:
-                     ctk.CTkButton(art_frame, text="Xem Dịch", width=80, fg_color="green", command=lambda a=article: self._view_translation(a)).pack(side="right", padx=5, pady=2)
+                meta_str = f"{word_count:,} từ"
+                if translated_at:
+                    meta_str += f" | {str(translated_at)[:10]}"
+                    
+                ctk.CTkLabel(
+                    right_frame, text=meta_str, text_color=Colors.TEXT_MUTED, font=Fonts.TINY
+                ).pack(side="left", padx=(Spacing.SM, Spacing.MD))
+                
+                # Title & Status (Left aligned)
+                ctk.CTkLabel(
+                    art_frame, text=article.get('subtitle', 'No Subtitle'), 
+                    font=Fonts.BODY, text_color=Colors.TEXT_PRIMARY, anchor="w"
+                ).pack(side="left", padx=Spacing.SM, fill="x", expand=True)
+
+                # Translate Button / View Button (only for leaf articles)
+                is_leaf = article.get('is_leaf', 1)
+                
+                if is_leaf:
+                    if is_translated:
+                         ctk.CTkButton(
+                             right_frame, text="Biên tập", width=80, height=28,
+                             fg_color="transparent", border_width=1, border_color=Colors.SUCCESS,
+                             text_color=Colors.SUCCESS, hover_color=Colors.BG_CARD_HOVER,
+                             font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
+                             command=lambda a=article: self._open_dual_view(a)
+                         ).pack(side="left", padx=Spacing.SM, pady=4)
+                    else:
+                         ctk.CTkButton(
+                             right_frame, text="✨ Dịch Ngay", width=90, height=28, 
+                             fg_color=Colors.PRIMARY, text_color=Colors.TEXT_PRIMARY, hover_color=Colors.PRIMARY_HOVER,
+                             font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
+                             command=lambda a=article: self._translate_article(a)
+                         ).pack(side="left", padx=Spacing.SM, pady=4)
                 else:
-                     ctk.CTkButton(art_frame, text="Dịch AI", width=80, command=lambda a=article: self._translate_article(a)).pack(side="right", padx=5, pady=2)
+                    # Container articles
+                    ctk.CTkLabel(
+                        right_frame, text="(Mục lục)", 
+                        text_color=Colors.TEXT_MUTED, font=Fonts.TINY
+                    ).pack(side="left", padx=Spacing.MD, pady=2)
                      
     def _translate_article(self, article):
         """Handle translation trigger."""
+        import threading
+        
         # 1. Check API Key
         if not self.translation_service.api_key:
              messagebox.showwarning("Thiếu API Key", "Vui lòng nhập API Key trong phần Cài đặt trước.")
              return
 
-        # 2. Get Content
-        # Article data in list only has headers, need to fetch content if not present?
-        # Database get_book_details DOES NOT fetch content_text by default (it wasn't select in the SQL)
-        # Wait, let's check database.py get_book_details.
-        # It SELECTS: id, subtitle, status, translation_text, order_index.
-        # IT DOES NOT SELECT `content_text`. Oops.
-        # I need to fetch the content text now.
+        article_id = article['id']
         
-        # Quick fix: Fetch content on demand or update get_book_details?
-        # Update get_book_details is better but I cannot edit database.py now easily inside this call.
-        # Let's use a helper or assume I'll fix database.py next.
-        # Actually I can fetch it here using db_manager connection if I exposed a method? 
-        # No, I should fix database.py to include content_text in the lite view? No, that makes list load slow.
-        # Better: Add `get_article_content(article_id)` to DB.
+        # 2. Get Content from DB
+        content_text = self.db_manager.get_article_content(article_id)
+        if not content_text:
+            messagebox.showwarning("Lỗi", "Không tìm thấy nội dung bài viết trong cơ sở dữ liệu.")
+            return
         
-        # For this step, I will assume I have the content or will add the method. 
-        # I will add `get_article(id)` to DB in next step. For now I write the UI logic invoking it.
-        pass # To be continued in next step fix.
+        # 3. Show Loading Popup
+        self.loading_win = ctk.CTkToplevel(self)
+        self.loading_win.title("Đang dịch...")
+        self.loading_win.geometry("350x120")
+        self.loading_win.transient(self)
+        self.loading_win.grab_set()
         
-        # Let's implement the UI flow assuming `self.db_manager.get_article(id)` exists.
+        ctk.CTkLabel(self.loading_win, text=f"Đang dịch: {article.get('subtitle', 'bài viết')[:30]}...", font=("Segoe UI", 12)).pack(pady=(20, 5))
         
-    def _view_translation(self, article):
-         # Show translation in a dialog
-         text = article.get('translation_text', '')
-         win = ctk.CTkToplevel(self)
-         win.title(f"Bản dịch: {article.get('subtitle')}")
-         win.geometry("600x400")
+        self.progress_label = ctk.CTkLabel(self.loading_win, text="Chuẩn bị...", text_color="gray")
+        self.progress_label.pack(pady=5)
+        
+        self.progress_bar = ctk.CTkProgressBar(self.loading_win, mode="determinate")
+        self.progress_bar.pack(pady=10, padx=20, fill="x")
+        self.progress_bar.set(0)
+        
+        # 4. Run Translation in Background Thread with progress
+        def progress_callback(current, total, status):
+            """Update progress on main thread."""
+            def update():
+                if hasattr(self, 'loading_win') and self.loading_win.winfo_exists():
+                    self.progress_label.configure(text=status)
+                    if total > 0:
+                        self.progress_bar.set(current / total)
+            self.after(0, update)
+        
+        def worker():
+            try:
+                # Get settings
+                chunk_size = self.settings_manager.get("chunk_size", 3000)
+                chunk_delay = self.settings_manager.get("chunk_delay", 2.0)
+                
+                translation = self.translation_service.translate_text(
+                    content_text,
+                    chunk_size=chunk_size,
+                    delay=chunk_delay,
+                    progress_callback=progress_callback
+                )
+                self.after(0, lambda: self._on_translation_complete(article_id, translation))
+            except Exception as e:
+                print(f"[Translation Worker Error] {e}")
+                self.after(0, lambda: self._on_translation_complete(article_id, None))
+        
+        threading.Thread(target=worker, daemon=True).start()
+    
+    def _on_translation_complete(self, article_id: int, translation: str):
+        """Callback when translation is finished (success or fail)."""
+        # Close loading popup
+        if hasattr(self, 'loading_win') and self.loading_win.winfo_exists():
+            self.loading_win.destroy()
+        
+        if translation:
+            # Save to database
+            self.db_manager.update_article_translation(article_id, translation, 'translated')
+            messagebox.showinfo("Thành công", "Dịch thành công! Bản dịch đã được lưu.")
+            # Refresh the content list to show updated status
+            self._render_content()
+        else:
+            messagebox.showerror("Lỗi", "Dịch thất bại. Vui lòng kiểm tra API Key và thử lại.")
+        
+    def _open_dual_view(self, article):
+         """Opens the Dual View Editor."""
+         # Fetch full content first
+         content_text = self.db_manager.get_article_content(article['id'])
+         full_article = article.copy()
+         full_article['content_text'] = content_text
          
-         txt = ctk.CTkTextbox(win)
-         txt.pack(fill="both", expand=True)
-         txt.insert("1.0", text)
-         txt.configure(state="disabled")
+         editor = DualViewEditor(self, full_article, self._save_translation_update, self.db_manager)
+         editor.grab_set()
+         
+    def _save_translation_update(self, article_id, new_text):
+        """Callback to save edited translation."""
+        self.db_manager.update_article_translation(article_id, new_text, 'translated')
+        self._render_content()
+
+    def _generate_and_open_webview(self):
+        """Generates and opens the webview for this book."""
+        try:
+             # Generate folders
+             output_dir = Path("user_data/webviews") / str(self.book_id)
+             images_dir = output_dir / "images"
+             images_dir.mkdir(parents=True, exist_ok=True)
+             
+             # Fetch full content & Copy Images
+             full_chapters = []
+             for chap_lite in self.chapters:
+                 full_articles = []
+                 for art_lite in chap_lite.get('articles', []):
+                     # Fetch content text
+                     art_id = art_lite['id']
+                     content = self.db_manager.get_article_content(art_id)
+                     trans = art_lite.get('translation_text', '')
+                     
+                     # Fetch and Copy Images
+                     images = self.db_manager.get_article_images(art_id)
+                     for img in images:
+                         src_path = Path(img['path'])
+                         if src_path.exists():
+                             dest_path = images_dir / src_path.name
+                             if not dest_path.exists():
+                                 try:
+                                     shutil.copy2(src_path, dest_path)
+                                 except Exception as img_err:
+                                     print(f"Error copying image {src_path}: {img_err}")
+                     
+                     full_articles.append({
+                         'subtitle': art_lite.get('subtitle'),
+                         'content_text': content,
+                         'translation_text': trans
+                     })
+                 
+                 full_chapters.append({
+                     'title': chap_lite.get('title'),
+                     'articles': full_articles
+                 })
+             
+             # Generate
+             # Output dir is already set above
+             intro_title = self.title()
+             
+             index_path = webview_generator.generate_webview(
+                 intro_title, "Author", full_chapters, output_dir
+             )
+             
+             # Open
+             webbrowser.open(index_path.resolve().as_uri())
+             
+        except Exception as e:
+            messagebox.showerror("Lỗi Webview", f"Không thể tạo webview: {e}")
+            print(e)

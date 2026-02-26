@@ -10,11 +10,14 @@ Phát triển `ExtractPDF-EPUB App` thành một **Trung tâm Nội dung Thông 
 ## Lộ trình Phát triển (Các Giai đoạn Tiếp theo)
 
 ### Giai đoạn 1: Đại tu Giao diện & Trải nghiệm Người dùng (UI/UX Overhaul)
-> **Trạng thái**: Đã hoàn thành (2026-01-25)
+> **Trạng thái**: ✅ Hoàn thành (2026-02-27 — Dark Navy Theme v2.1.0)
 * [x] Triển khai Chế độ xem "Featherweight".
 * [x] Xây dựng Hệ thống Log Tích hợp.
 * [x] Nâng cấp Toàn diện Luồng làm việc (Progress Bar, Background Save).
 * [x] Xây dựng Lịch sử Trích xuất.
+* [x] **v2.1.0**: Tạo Design System (`theme.py`) với bảng màu Dark Navy.
+* [x] **v2.1.0**: Viết lại Sidebar, Dashboard, Top Bar, Loading, Log Panel.
+* [ ] **Tiếp theo**: Modernize Library Grid View & Settings View.
 
 ### Giai đoạn 2: Nâng cao Lõi Phân tích & Lưu trữ (Advanced Parsing & Storage)
 *Mục tiêu: Tăng cường độ chính xác của parser và mở rộng khả năng lưu trữ.*
@@ -39,6 +42,11 @@ Phát triển `ExtractPDF-EPUB App` thành một **Trung tâm Nội dung Thông 
 * **[x] Xây dựng Tab "Tiện ích Dịch thuật AI":**
     * Tích hợp Gemini API và có thể cả Selenium.
     * Xây dựng chức năng dịch tự động các bài viết đã được lưu trong CSDL.
+
+* **[ ] Tích hợp Local LLM (TranslateGemma 12B):**
+    * Triển khai mô hình dịch thuật offline để tối ưu chi phí và tùy biến văn phong.
+    * Xây dựng "Local RAG" để áp dụng các quy tắc dịch thuật (Glossary/Style Guide) từ Gem.
+    * Hỗ trợ Hybrid Mode: Chuyển đổi linh hoạt giữa Cloud API (Gemini) và Local LLM.
     
 * **[ ] Chiến dịch Automation (Auto-Blogger):**
     * Tạo thư viện bài viết theo chủ đề.

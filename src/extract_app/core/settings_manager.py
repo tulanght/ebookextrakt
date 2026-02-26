@@ -18,7 +18,14 @@ class SettingsManager:
     DEFAULT_SETTINGS = {
         "gemini_api_key": "",
         "theme": "Dark",
-        "default_output_dir": ""
+        "default_output_dir": "",
+        "chunk_size": 3000,
+        "chunk_delay": 2.0,
+        # Hybrid Translation Settings
+        "translation_engine": "cloud", # "cloud" or "local"
+        "local_model_path": "",
+        "current_style": "standard",
+        "n_gpu_layers": -1 # Auto/All
     }
 
     def __init__(self, settings_path: str = "user_data/settings.json"):

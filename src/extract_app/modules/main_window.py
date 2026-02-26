@@ -24,8 +24,8 @@ from typing import Any, Dict, List
 
 # --- Third-Party Imports ---
 import customtkinter as ctk
-import sv_ttk
 from customtkinter import filedialog
+from .ui.theme import Colors, Spacing
 
 # --- Local Application Imports ---
 from ..core import content_structurer, epub_parser, pdf_parser, storage_handler
@@ -41,6 +41,7 @@ from .ui.results_view import ResultsView
 from .ui.log_panel import LogPanel
 from .ui.loading_overlay import LoadingOverlay
 from .ui.library_view import LibraryView # New Import
+from .ui.settings_view import SettingsView # New Import
 
 class MainWindow(ctk.CTk):
     """
@@ -49,11 +50,11 @@ class MainWindow(ctk.CTk):
 
     def __init__(self):
         super().__init__()
-        self.title("ExtractPDF-EPUB App - Modern UI")
-        self.geometry("1100x800")
+        self.title("E-Extract — Ebook Extraction & Translation")
+        self.geometry("1200x800")
         # Theme Configuration
         ctk.set_appearance_mode("Dark")
-        sv_ttk.set_theme("dark") 
+        self.configure(fg_color=Colors.BG_APP) 
 
         # Instance Attributes
         self.current_results: Dict[str, Any] = {}
@@ -66,7 +67,7 @@ class MainWindow(ctk.CTk):
         self.history_manager = HistoryManager() 
         self.db_manager = DatabaseManager() # Initialize DB Manager
         self.settings_manager = SettingsManager()
-        self.translation_service = TranslationService(self.settings_manager.get_api_key())
+        self.translation_service = TranslationService(self.settings_manager)
         
         # UI Components
         self.sidebar: SidebarFrame
@@ -102,7 +103,7 @@ class MainWindow(ctk.CTk):
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         
         # 2. Right Side Container (Top Bar + View Area + Log)
-        self.right_container = ctk.CTkFrame(self, fg_color="transparent")
+        self.right_container = ctk.CTkFrame(self, fg_color=Colors.BG_APP, corner_radius=0)
         self.right_container.grid(row=0, column=1, sticky="nsew")
         self.right_container.grid_rowconfigure(1, weight=1) # Content Area
         self.right_container.grid_rowconfigure(2, weight=0) # Log Panel
@@ -114,13 +115,13 @@ class MainWindow(ctk.CTk):
         
         # 4. Content Area (Holds Dashboard, Results)
         self.content_area = ctk.CTkFrame(self.right_container, fg_color="transparent")
-        self.content_area.grid(row=1, column=0, sticky="nsew", padx=20, pady=20)
+        self.content_area.grid(row=1, column=0, sticky="nsew", padx=0, pady=0)
         self.content_area.grid_rowconfigure(0, weight=1)
         self.content_area.grid_columnconfigure(0, weight=1)
 
         # 5. Log Panel (Bottom)
         self.log_panel = LogPanel(self.right_container, height=120)
-        self.log_panel.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 20))
+        self.log_panel.grid(row=2, column=0, sticky="ew", padx=Spacing.XL, pady=(0, Spacing.LG))
         
         # Connect Logger
         # Use lambda or direct method to route messages to the UI panel on the main thread.
@@ -141,6 +142,11 @@ class MainWindow(ctk.CTk):
             settings_manager=self.settings_manager,
             translation_service=self.translation_service
         ) # Initialize Library View
+        self.settings_view = SettingsView(
+            self.content_area, 
+            settings_manager=self.settings_manager, 
+            translation_service=self.translation_service
+        )
         
         # 7. Loading Overlay (Replaces old loading_frame)
         self.loading_overlay = LoadingOverlay(self.content_area)
@@ -187,7 +193,7 @@ class MainWindow(ctk.CTk):
             self._show_view("library")
             
         elif view_name == "settings":
-            messagebox.showinfo("Thông báo", "Tính năng Cài đặt đang được phát triển.\nSẽ có trong phiên bản tới!")
+            self._show_view("settings")
 
     def _show_view(self, view_name: str):
         """Switch the visible view in the content area."""
@@ -195,6 +201,9 @@ class MainWindow(ctk.CTk):
         self.dashboard_view.grid_forget()
         self.results_view.grid_forget()
         self.library_view.grid_forget()
+        self.results_view.grid_forget()
+        self.library_view.grid_forget()
+        self.settings_view.grid_forget()
         self.loading_overlay.grid_forget()
         
         # Show selected
@@ -206,6 +215,8 @@ class MainWindow(ctk.CTk):
             self.library_view.grid(row=0, column=0, sticky="nsew")
         elif view_name == "loading":
             self.loading_overlay.grid(row=0, column=0, sticky="nsew")
+        elif view_name == "settings":
+            self.settings_view.grid(row=0, column=0, sticky="nsew")
 
     def _on_select_file(self):
         """Handle file selection from Dashboard."""
@@ -317,13 +328,21 @@ class MainWindow(ctk.CTk):
         self.loading_overlay.update_status(title="Đang lưu dữ liệu...", detail="Chuẩn bị...", progress=0.0)
 
         # Start Saving Thread
+        # Start Saving Thread
+        metadata = self.current_results.get('metadata', {})
         threading.Thread(
             target=self._worker_save_content, 
-            args=(self.current_results.get('content', []), Path(target_dir), Path(self.current_filepath).name, self.current_results.get('metadata', {}).get('author', 'Unknown')),
+            args=(
+                self.current_results.get('content', []), 
+                Path(target_dir), 
+                Path(self.current_filepath).name, 
+                metadata.get('author', 'Unknown'),
+                metadata.get('cover_image_path', '')
+            ),
             daemon=True
         ).start()
 
-    def _worker_save_content(self, content, target_dir, book_name, author):
+    def _worker_save_content(self, content, target_dir, book_name, author, cover_path):
         """Worker thread for saving content."""
         def progress_adapter(percent, msg):
             # Update UI from worker thread safely
@@ -334,7 +353,8 @@ class MainWindow(ctk.CTk):
             progress_callback=progress_adapter,
             db_manager=self.db_manager,
             author=author,
-            original_path=self.current_filepath
+            original_path=self.current_filepath,
+            cover_path=cover_path
         )
         
         # Schedule completion on main thread

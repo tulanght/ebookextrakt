@@ -5,7 +5,28 @@ Dự án này tuân theo [Keep a Changelog](https://keepachangelog.com/en/1.0.0/
 
 ---
 
-## [Unreleased] - 2026-01-20
+## [2.1.0] - 2026-02-27
+
+### 🎨 Đại tu Giao diện — Dark Navy Theme (UI/UX Redesign)
+-   **Design System (`theme.py`)**: Tạo file trung tâm chứa toàn bộ bảng màu Dark Navy (`Colors`), chuẩn font (`Fonts`), và khoảng cách (`Spacing`). Tất cả UI components import từ đây.
+-   **Sidebar (`sidebar.py`)**: Viết lại hoàn toàn — Icon+Text layout, nhãn phân mục (MENU/ĐANG MỞ), highlight active state bằng xanh dương `#3B82F6`.
+-   **Dashboard (`dashboard_view.py`)**: Chuyển sang bố cục Card — 3 thẻ thông tin (Import/Thư viện/Đã dịch) kèm hover effect, danh sách file gần đây hiện đại.
+-   **Top Bar, Loading Overlay, Log Panel**: Đồng bộ Dark Navy theme.
+-   **Main Window (`main_window.py`)**: Áp dụng nền `#0D1117`, loại bỏ `sv_ttk`, đổi tên "E-Extract", tăng kích thước cửa sổ 1200x800.
+
+### ⚡ Tối ưu Dịch thuật
+-   **Parallel Cloud Translation**: Dịch 3 chunk cùng lúc (ThreadPoolExecutor).
+-   **Tăng Chunk Size**: Cloud chunks giờ là 15.000 ký tự (từ 3.000), giảm số lần gọi API.
+-   **Loại bỏ Delay**: Bỏ khoảng nghỉ 2 giây giữa các chunk.
+-   **Model Selector (Gemini 2.5)**: Thêm dropdown chọn model mới (Gemini 2.5 Pro/Flash, 2.0 Flash) vào `settings_view.py`.
+-   **Auto-Fallback**: Tự động chuyển sang model khác nếu model chính bị lỗi 404.
+
+### 🐛 Sửa lỗi
+-   **TclError Crash**: Thêm `winfo_exists()` guard vào `library_view._render_content()`.
+-   **Webview Markdown**: Cải thiện JavaScript parser cho headings, lists, bold, italic, paragraphs.
+-   **Image Anchor Protection**: Thay tags `[Image: ...]` bằng placeholder `__IMG_ID_X__` trước khi gửi AI dịch.
+
+## [0.2.0] - 2026-02-10
 
 ### ⚙️ Quy trình & Hạ tầng (Workflow & Infra)
 -   **Quy trình nghiêm ngặt**: Triển khai hệ thống `.agent/workflows/` để bắt buộc Agent tuân thủ quy trình.

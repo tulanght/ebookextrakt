@@ -87,7 +87,21 @@ def extract_content_from_tags(
              continue
              
         text = temp_tag.get_text(strip=True)
-        text = temp_tag.get_text(strip=True)
         if text:
+            # Formatting Preservation: Headings
+            if temp_tag.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                # Convert level to markdown '#'
+                try:
+                    level = int(temp_tag.name[1])
+                    # We map h1-># but for article content maybe start at ## or ###?
+                    # Let's keep it simple: exact mapping.
+                    prefix = '#' * level
+                    text = f"{prefix} {text}"
+                except:
+                    pass
+            elif temp_tag.name == 'p':
+                 # Maybe add spacing logic later, but for now just text
+                 pass
+                 
             content_list.append(('text', text))
     return content_list
