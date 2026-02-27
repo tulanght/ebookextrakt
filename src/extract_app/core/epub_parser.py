@@ -12,6 +12,7 @@ and delegates the parsing task to the appropriate specialized parser module.
 """
 
 import os
+import re
 import traceback
 from pathlib import Path
 from typing import Dict, Any
