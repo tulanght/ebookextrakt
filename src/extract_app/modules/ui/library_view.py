@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import messagebox
 from typing import Callable, List, Dict, Any
 import customtkinter as ctk
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageTk
 from pathlib import Path
 from ...core import webview_generator
 import os
@@ -65,10 +65,10 @@ class BookCard(ctk.CTkFrame):
         if cover_path and Path(cover_path).exists():
             try:
                 img = Image.open(cover_path)
-                img.thumbnail((cover_w, cover_h))
-                # Pad to exact dimensions, preserving aspect ratio
-                img = ImageOps.pad(img, (cover_w, cover_h), color="#1E293B") 
-                self.cover_image = ctk.CTkImage(light_image=img, dark_image=img, size=(cover_w, cover_h))
+                # Scale to fit within cover_w x cover_h, crop to fill exactly
+                img = ImageOps.fit(img, (cover_w, cover_h), method=Image.LANCZOS)
+                # Use ImageTk.PhotoImage instead of CTkImage to avoid DPI scaling issues
+                self.cover_image = ImageTk.PhotoImage(img)
             except Exception as e:
                 print(f"Error loading cover: {e}")
         
