@@ -359,20 +359,41 @@ class BookDetailWindow(ctk.CTkToplevel):
                 
                 if is_leaf:
                     if is_translated:
+                         # Edit button
                          ctk.CTkButton(
-                             right_frame, text="Biên tập", width=80, height=28,
+                             right_frame, text="Biên tập", width=72, height=26,
                              fg_color="transparent", border_width=1, border_color=Colors.SUCCESS,
                              text_color=Colors.SUCCESS, hover_color=Colors.BG_CARD_HOVER,
                              font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
                              command=lambda a=article: self._open_dual_view(a)
-                         ).pack(side="left", padx=Spacing.SM, pady=4)
+                         ).pack(side="left", padx=2, pady=4)
+                         # Website variant button
+                         has_web = bool(article.get('website_text'))
+                         web_fg = Colors.BG_CARD if has_web else "transparent"
+                         ctk.CTkButton(
+                             right_frame, text="🌐", width=32, height=26,
+                             fg_color=web_fg, border_width=1, border_color=Colors.PRIMARY,
+                             text_color=Colors.PRIMARY, hover_color=Colors.BG_CARD_HOVER,
+                             font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
+                             command=lambda a=article: self._transform_article(a, 'website')
+                         ).pack(side="left", padx=2, pady=4)
+                         # Facebook variant button
+                         has_fb = bool(article.get('facebook_text'))
+                         fb_fg = Colors.BG_CARD if has_fb else "transparent"
+                         ctk.CTkButton(
+                             right_frame, text="📱", width=32, height=26,
+                             fg_color=fb_fg, border_width=1, border_color=Colors.WARNING,
+                             text_color=Colors.WARNING, hover_color=Colors.BG_CARD_HOVER,
+                             font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
+                             command=lambda a=article: self._transform_article(a, 'facebook')
+                         ).pack(side="left", padx=2, pady=4)
                     else:
                          ctk.CTkButton(
-                             right_frame, text="✨ Dịch Ngay", width=90, height=28, 
+                             right_frame, text="📥 Dịch Lưu trữ", width=110, height=26, 
                              fg_color=Colors.PRIMARY, text_color=Colors.TEXT_PRIMARY, hover_color=Colors.PRIMARY_HOVER,
                              font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
                              command=lambda a=article: self._translate_article(a)
-                         ).pack(side="left", padx=Spacing.SM, pady=4)
+                         ).pack(side="left", padx=2, pady=4)
                 else:
                     # Container articles
                     ctk.CTkLabel(
@@ -456,6 +477,59 @@ class BookDetailWindow(ctk.CTkToplevel):
             self._render_content()
         else:
             messagebox.showerror("Lỗi", "Dịch thất bại. Vui lòng kiểm tra API Key và thử lại.")
+
+    def _transform_article(self, article, variant_type: str):
+        """Handle variant transformation (website/facebook) from archive text."""
+        import threading
+        
+        if not self.translation_service.api_key:
+            messagebox.showwarning("Thiếu API Key", "Vui lòng nhập API Key trong phần Cài đặt trước.")
+            return
+        
+        archive_text = article.get('translation_text', '')
+        if not archive_text:
+            messagebox.showwarning("Chưa có bản dịch", "Cần dịch lưu trữ trước khi chuyển thể.")
+            return
+
+        article_id = article['id']
+        original_text = self.db_manager.get_article_content(article_id) or ''
+        label_map = {'website': 'Website', 'facebook': 'Facebook'}
+        label = label_map.get(variant_type, variant_type)
+
+        # Loading popup
+        self.loading_win = ctk.CTkToplevel(self)
+        self.loading_win.title(f"Chuyển thể → {label}")
+        self.loading_win.geometry("350x100")
+        self.loading_win.transient(self)
+        self.loading_win.grab_set()
+        ctk.CTkLabel(
+            self.loading_win, text=f"Đang tạo bản {label}...", 
+            font=Fonts.BODY, text_color=Colors.TEXT_PRIMARY
+        ).pack(pady=(25, 5))
+        self.progress_bar = ctk.CTkProgressBar(self.loading_win, mode="indeterminate")
+        self.progress_bar.pack(pady=10, padx=20, fill="x")
+        self.progress_bar.start()
+
+        def worker():
+            result, err = self.translation_service.transform_text(archive_text, original_text, variant_type)
+            self.after(0, lambda: self._on_transform_complete(article_id, variant_type, result, err))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_transform_complete(self, article_id, variant_type, result, error):
+        """Callback when variant transformation finishes."""
+        if hasattr(self, 'loading_win') and self.loading_win.winfo_exists():
+            self.loading_win.destroy()
+        
+        label_map = {'website': 'Website', 'facebook': 'Facebook'}
+        label = label_map.get(variant_type, variant_type)
+        
+        if result:
+            self.db_manager.update_article_variant(article_id, variant_type, result)
+            messagebox.showinfo("Thành công", f"Bản {label} đã được tạo và lưu!")
+            self._render_content()
+        else:
+            messagebox.showerror("Lỗi", f"Chuyển thể {label} thất bại: {error}")
         
     def _open_dual_view(self, article):
          """Opens the Dual View Editor."""

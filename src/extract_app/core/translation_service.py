@@ -280,6 +280,86 @@ class TranslationService:
         
         return final_text
 
+    def transform_text(self, archive_text: str, original_text: str, variant_type: str) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Transform an archive translation into a Website or Facebook variant.
+        Uses the archive_text as the primary source; original_text for reference.
+        """
+        if not self.api_key or not self.cloud_model:
+            return None, "API Key chưa được cấu hình"
+
+        if variant_type == 'website':
+            prompt = (
+                "<SYSTEM>\n"
+                "Bạn là biên tập viên website chuyên nghiệp.\n"
+                "NHIỆM VỤ: Biên tập lại bản dịch tiếng Việt bên dưới thành bài viết website.\n\n"
+                "QUY TẮC:\n"
+                "1. CHỈ trả về bài viết đã biên tập. KHÔNG giải thích, KHÔNG ghi chú.\n"
+                "2. Thêm tiêu đề H2 (##) cho các phần chính, H3 (###) cho phần phụ.\n"
+                "3. Chia đoạn văn ngắn (2-4 câu), sử dụng bullet points khi liệt kê.\n"
+                "4. Văn phong mạch lạc, chuyên nghiệp nhưng không khô khan.\n"
+                "5. Giữ nguyên mọi placeholder __IMG_XXX__ và [Image Anchor:].\n"
+                "</SYSTEM>\n\n"
+                f"{archive_text}"
+            )
+        elif variant_type == 'facebook':
+            # Load Gem persona from markdown files
+            gem_instructions = self._load_gem_style_files()
+            prompt = (
+                "<SYSTEM>\n"
+                f"{gem_instructions}\n\n"
+                "NHIỆM VỤ: Chuyển thể bản dịch bên dưới thành bài viết Facebook theo phong cách Gem.\n"
+                "CHỈ trả về nội dung bài viết. KHÔNG giải thích thêm.\n"
+                "</SYSTEM>\n\n"
+                "--- BẢN DỊCH GỐC ---\n"
+                f"{archive_text}\n\n"
+                "--- VĂN BẢN TIẾNG ANH (THAM KHẢO) ---\n"
+                f"{original_text[:3000]}"
+            )
+        else:
+            return None, f"Unknown variant type: {variant_type}"
+
+        generation_config = genai.GenerationConfig(
+            temperature=0.7 if variant_type == 'facebook' else 0.4,
+            top_p=0.95,
+        )
+
+        try:
+            model_name = self.settings.get('cloud_model_name', 'gemini-2.5-flash')
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt, generation_config=generation_config)
+            if response.text:
+                cleaned = self._clean_translation_output(response.text)
+                return cleaned, None
+            return None, "Empty response from AI"
+        except Exception as e:
+            return None, str(e)
+
+    def _load_gem_style_files(self) -> str:
+        """Load Gem persona from scripts/gem_dich/*.md files."""
+        from pathlib import Path
+        gem_dir = Path("scripts/gem_dich")
+        files_order = [
+            "nhancachcotloi.md",
+            "bocongcusangtao.md",
+            "anti_ai_style.md",
+            "sangtaotieude.md",
+            "thuviendochuyennganh.md",
+        ]
+        parts = []
+        for fname in files_order:
+            fpath = gem_dir / fname
+            if fpath.exists():
+                try:
+                    parts.append(fpath.read_text(encoding='utf-8'))
+                except:
+                    pass
+        if parts:
+            return "\n\n---\n\n".join(parts)
+        # Fallback to inline style
+        return self.style_manager.get_style_instruction("facebook_gem")
+
+
     def _clean_translation_output(self, text: str) -> str:
         """Clean AI output: strip preambles, code fences, trailing notes."""
         result = text.strip()

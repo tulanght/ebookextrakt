@@ -168,6 +168,17 @@ class DatabaseManager:
             except Exception as e:
                  print(f"[DB] Article Migration 3 failed: {e}")
         
+        # Migration v0.3.0: Article variants (website/facebook text)
+        if 'website_text' not in art_cols:
+            print("[DB] Migration: Adding website_text/facebook_text to articles.")
+            try:
+                cursor.execute("ALTER TABLE articles ADD COLUMN website_text TEXT")
+                cursor.execute("ALTER TABLE articles ADD COLUMN facebook_text TEXT")
+                conn.commit()
+                print("[DB] Variant columns added.")
+            except Exception as e:
+                 print(f"[DB] Article Migration 4 failed: {e}")
+
         conn.close()
 
     # --- CRUD Operations ---
@@ -473,7 +484,9 @@ class DatabaseManager:
             # Or just loop. Loop is fine for typical book size (~20-50 chapters).
             for chapter in chapters:
                 cursor.execute("""
-                    SELECT id, subtitle, status, translation_text, is_leaf, order_index, word_count, last_updated
+                    SELECT id, subtitle, status, translation_text, is_leaf, order_index, 
+                           word_count, last_updated, translated_at,
+                           website_text, facebook_text
                     FROM articles 
                     WHERE chapter_id = ? 
                     ORDER BY order_index
@@ -482,5 +495,19 @@ class DatabaseManager:
                 result['chapters'].append(chapter)
                 
             return result
+        finally:
+            conn.close()
+
+    def update_article_variant(self, article_id: int, variant_type: str, text: str):
+        """Updates a variant column (website_text or facebook_text) for an article."""
+        allowed = {'website': 'website_text', 'facebook': 'facebook_text'}
+        col = allowed.get(variant_type)
+        if not col:
+            raise ValueError(f"Invalid variant type: {variant_type}")
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(f"UPDATE articles SET {col} = ?, last_updated = CURRENT_TIMESTAMP WHERE id = ?", (text, article_id))
+            conn.commit()
         finally:
             conn.close()
