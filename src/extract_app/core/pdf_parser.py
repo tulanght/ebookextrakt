@@ -76,11 +76,12 @@ def parse_pdf(filepath: str) -> Dict[str, Any]:
         # 1. Extract Title
         title = meta.get('title', '').strip()
         if not title:
-            # Fallback: clean filename
-            stem = Path(filepath).stem
-            stem = re.sub(r'\s*\(Z-Library\)', '', stem, flags=re.IGNORECASE)
-            stem = re.sub(r'_(pdf|epub|mobi)$', '', stem, flags=re.IGNORECASE)
-            title = stem.strip()
+            title = Path(filepath).stem
+            
+        # Clean title universally
+        title = re.sub(r'\s*\(Z-Library\)', '', title, flags=re.IGNORECASE)
+        title = re.sub(r'_(pdf|epub|mobi)$', '', title, flags=re.IGNORECASE)
+        title = title.strip()
         
         # 2. Extract Author
         author = meta.get('author', 'Không rõ')

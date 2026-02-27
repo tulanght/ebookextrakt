@@ -54,10 +54,12 @@ def parse_epub(filepath: str) -> Dict[str, Any]:
             pass
             
         if not title:
-            stem = Path(filepath).stem
-            stem = re.sub(r'\s*\(Z-Library\)', '', stem, flags=re.IGNORECASE)
-            stem = re.sub(r'_(pdf|epub|mobi)$', '', stem, flags=re.IGNORECASE)
-            title = stem.strip()
+            title = Path(filepath).stem
+
+        # Clean title universally (whether from metadata or filename)
+        title = re.sub(r'\s*\(Z-Library\)', '', title, flags=re.IGNORECASE)
+        title = re.sub(r'_(pdf|epub|mobi)$', '', title, flags=re.IGNORECASE)
+        title = title.strip()
             
         results['metadata']['title'] = title
 

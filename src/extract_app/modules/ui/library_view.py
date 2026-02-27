@@ -64,7 +64,8 @@ class BookCard(ctk.CTkFrame):
         if cover_path and Path(cover_path).exists():
             try:
                 img = Image.open(cover_path)
-                self.cover_image = ctk.CTkImage(light_image=img, dark_image=img, size=(120, 160))
+                img.thumbnail((120, 160))
+                self.cover_image = ctk.CTkImage(light_image=img, dark_image=img, size=img.size)
             except Exception as e:
                 print(f"Error loading cover: {e}")
         
