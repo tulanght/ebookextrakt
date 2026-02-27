@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import messagebox
 from typing import Callable, List, Dict, Any
 import customtkinter as ctk
-from PIL import Image
+from PIL import Image, ImageOps
 from pathlib import Path
 from ...core import webview_generator
 import os
@@ -65,7 +65,9 @@ class BookCard(ctk.CTkFrame):
             try:
                 img = Image.open(cover_path)
                 img.thumbnail((120, 160))
-                self.cover_image = ctk.CTkImage(light_image=img, dark_image=img, size=img.size)
+                # Pad to exact 120x160
+                img = ImageOps.pad(img, (120, 160), color="#1E293B") 
+                self.cover_image = ctk.CTkImage(light_image=img, dark_image=img, size=(120, 160))
             except Exception as e:
                 print(f"Error loading cover: {e}")
         
