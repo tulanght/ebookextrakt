@@ -328,33 +328,36 @@ class MainWindow(ctk.CTk):
         self.loading_overlay.update_status(title="Đang lưu dữ liệu...", detail="Chuẩn bị...", progress=0.0)
 
         # Start Saving Thread
-        # Start Saving Thread
         metadata = self.current_results.get('metadata', {})
+        # Use cleaned title from parser metadata, fallback to filename
+        book_title = metadata.get('title', '') or Path(self.current_filepath).stem
         threading.Thread(
             target=self._worker_save_content, 
             args=(
                 self.current_results.get('content', []), 
                 Path(target_dir), 
-                Path(self.current_filepath).name, 
+                book_title,
                 metadata.get('author', 'Unknown'),
-                metadata.get('cover_image_path', '')
+                metadata.get('cover_image_path', ''),
+                metadata.get('published_year', '')
             ),
             daemon=True
         ).start()
 
-    def _worker_save_content(self, content, target_dir, book_name, author, cover_path):
+    def _worker_save_content(self, content, target_dir, book_title, author, cover_path, published_year=""):
         """Worker thread for saving content."""
         def progress_adapter(percent, msg):
             # Update UI from worker thread safely
             self.after(0, self.loading_overlay.update_status, "Đang lưu dữ liệu...", msg, percent)
 
         success, message = storage_handler.save_as_folders(
-            content, target_dir, book_name, 
+            content, target_dir, book_title, 
             progress_callback=progress_adapter,
             db_manager=self.db_manager,
             author=author,
             original_path=self.current_filepath,
-            cover_path=cover_path
+            cover_path=cover_path,
+            published_year=published_year
         )
         
         # Schedule completion on main thread

@@ -174,7 +174,8 @@ def save_as_folders(
     db_manager: Any = None,
     author: str = "Unknown",
     original_path: str = "",
-    cover_path: str = ""
+    cover_path: str = "",
+    published_year: str = ""
 ) -> tuple[bool, str]:
     """
     Saves the structured content with optional progress reporting and DB integration.
@@ -215,7 +216,7 @@ def save_as_folders(
             
             # cover_path is now passed in argument
             book_id = db_manager.save_book_batch(
-                book_name, author, original_path, final_cover_path, structured_content
+                book_name, author, original_path, final_cover_path, structured_content, published_year
             )
             if book_id == -1:
                 print("[Storage] Warning: Database save failed, but files were saved.")

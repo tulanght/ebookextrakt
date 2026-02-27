@@ -320,7 +320,7 @@ class DatabaseManager:
             conn.close()
     
     def save_book_batch(self, book_title: str, author: str, source_path: str, 
-                        cover_path: str, structured_content: list) -> int:
+                        cover_path: str, structured_content: list, published_year: str = "") -> int:
         """
         Saves all book data (chapters, articles, images) in a SINGLE transaction.
         This is MUCH faster than individual insert calls.
@@ -333,9 +333,9 @@ class DatabaseManager:
             
             # 1. Insert Book
             cursor.execute("""
-                INSERT OR IGNORE INTO books (title, author, source_path, cover_path)
-                VALUES (?, ?, ?, ?)
-            """, (book_title, author, source_path, cover_path))
+                INSERT OR IGNORE INTO books (title, author, source_path, cover_path, published_year)
+                VALUES (?, ?, ?, ?, ?)
+            """, (book_title, author, source_path, cover_path, published_year))
             
             if cursor.lastrowid and cursor.lastrowid > 0:
                 book_id = cursor.lastrowid
