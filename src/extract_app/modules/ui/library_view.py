@@ -61,13 +61,14 @@ class BookCard(ctk.CTkFrame):
         
         # 1. Cover Image
         self.cover_image = None
+        cover_w, cover_h = 190, 240
         if cover_path and Path(cover_path).exists():
             try:
                 img = Image.open(cover_path)
-                img.thumbnail((120, 160))
-                # Pad to exact 120x160
-                img = ImageOps.pad(img, (120, 160), color="#1E293B") 
-                self.cover_image = ctk.CTkImage(light_image=img, dark_image=img, size=(120, 160))
+                img.thumbnail((cover_w, cover_h))
+                # Pad to exact dimensions, preserving aspect ratio
+                img = ImageOps.pad(img, (cover_w, cover_h), color="#1E293B") 
+                self.cover_image = ctk.CTkImage(light_image=img, dark_image=img, size=(cover_w, cover_h))
             except Exception as e:
                 print(f"Error loading cover: {e}")
         
@@ -80,10 +81,10 @@ class BookCard(ctk.CTkFrame):
                 fg_color=Colors.BG_APP,
                 text_color=Colors.TEXT_MUTED,
                 corner_radius=10,
-                width=120, height=160
+                width=cover_w, height=cover_h
             )
             
-        self.lbl_cover.grid(row=0, column=0, pady=(Spacing.LG, Spacing.SM), padx=Spacing.LG)
+        self.lbl_cover.grid(row=0, column=0, pady=(Spacing.SM, Spacing.SM), padx=Spacing.SM)
         self._bind_click(self.lbl_cover)
         
         # 2. Info Frame
