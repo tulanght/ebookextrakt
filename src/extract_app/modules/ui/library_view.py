@@ -47,21 +47,17 @@ class BookCard(ctk.CTkFrame):
         
         # Fixed card size
         self.configure(width=220, height=360)
-        self.grid_propagate(False)
         self.pack_propagate(False)
         
         # Hover Effect Triggers
         self.bind("<Enter>", self._on_enter)
         self.bind("<Leave>", self._on_leave)
         
-        # Layout: Image (Top) -> Info (Bottom)
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(0, weight=1) # Image area
-        self.grid_rowconfigure(1, weight=0) # Text area
+        # ===== PACK LAYOUT (top to bottom) =====
         
         # 1. Cover Image
         self.cover_image = None
-        cover_w, cover_h = 190, 240
+        cover_w, cover_h = 200, 220
         if cover_path and Path(cover_path).exists():
             try:
                 img = Image.open(cover_path)
@@ -72,7 +68,7 @@ class BookCard(ctk.CTkFrame):
                 print(f"Error loading cover: {e}")
         
         if self.cover_image:
-            self.lbl_cover = ctk.CTkLabel(self, text="", image=self.cover_image)
+            self.lbl_cover = ctk.CTkLabel(self, text="", image=self.cover_image, width=cover_w, height=cover_h)
         else:
             self.lbl_cover = ctk.CTkLabel(
                 self, text="📚\nNo Cover", 
@@ -83,65 +79,56 @@ class BookCard(ctk.CTkFrame):
                 width=cover_w, height=cover_h
             )
             
-        self.lbl_cover.grid(row=0, column=0, pady=(Spacing.SM, Spacing.SM), padx=Spacing.SM)
+        self.lbl_cover.pack(side="top", pady=(8, 4), padx=10)
         self._bind_click(self.lbl_cover)
         
-        # 2. Info Frame
-        self.info_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.info_frame.grid(row=1, column=0, sticky="nsew", padx=Spacing.MD, pady=(0, Spacing.MD))
-        self.info_frame.grid_columnconfigure(0, weight=1)
-        
-        # Truncate logic for title (rough approx for 2 lines)
+        # 2. Title (truncated, max 2 lines)
         display_title = full_title
         if len(display_title) > 42:
             display_title = display_title[:39] + "..."
             
-        # Title
         self.title_label = ctk.CTkLabel(
-            self.info_frame, text=display_title, font=Fonts.BODY_BOLD, 
+            self, text=display_title, font=Fonts.BODY_BOLD, 
             text_color=Colors.TEXT_PRIMARY,
             anchor="center", justify="center", wraplength=190
         )
-        self.title_label.pack(fill="x", pady=(0, 2))
+        self.title_label.pack(side="top", fill="x", padx=8, pady=(0, 2))
         self._bind_click(self.title_label)
         
         # Tooltip for full title
         if len(full_title) > 42:
              ToolTip(self.title_label, full_title)
         
-        # Author & Year
+        # 3. Author & Year
         author_text = author
         if published_year:
              author_text = f"{author} • {published_year}"
              
         self.author_label = ctk.CTkLabel(
-            self.info_frame, text=author_text, font=Fonts.SMALL,
+            self, text=author_text, font=Fonts.SMALL,
             text_color=Colors.TEXT_MUTED
         )
-        self.author_label.pack(fill="x", pady=(0, 2))
+        self.author_label.pack(side="top", fill="x", padx=8, pady=(0, 2))
         self._bind_click(self.author_label)
 
-        # Meta tags frame
-        self.meta_frame = ctk.CTkFrame(self.info_frame, fg_color="transparent")
-        self.meta_frame.pack(fill="x", pady=(0, Spacing.SM))
-        
+        # 4. Category tag (if present)
         if category:
             lbl_cat = ctk.CTkLabel(
-                self.meta_frame, text=category, font=Fonts.TINY,
+                self, text=category, font=Fonts.TINY,
                 fg_color=Colors.BG_APP, text_color=Colors.PRIMARY,
                 corner_radius=4, padx=6, pady=2
             )
-            lbl_cat.pack(side="top")
+            lbl_cat.pack(side="top", pady=(0, 2))
 
-        # Delete Button (Pushed to bottom)
+        # 5. Delete Button (always at the very bottom)
         self.btn_delete = ctk.CTkButton(
-            self.info_frame, text="🗑 Xóa", width=60, height=24,
+            self, text="🗑 Xóa", width=60, height=24,
             fg_color="transparent", text_color=Colors.DANGER,
             hover_color=Colors.DANGER_HOVER,
             font=Fonts.TINY,
             command=self._handle_delete
         )
-        self.btn_delete.pack(side="bottom", pady=4)
+        self.btn_delete.pack(side="bottom", pady=(0, 8))
 
     def _bind_click(self, widget):
         widget.bind("<Button-1>", self._handle_click_event)
