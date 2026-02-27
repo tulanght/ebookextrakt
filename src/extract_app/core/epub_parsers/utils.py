@@ -86,22 +86,21 @@ def extract_content_from_tags(
         if temp_tag.name == 'img':
              continue
              
-        text = temp_tag.get_text(strip=True)
+        # Smart text extraction: preserve paragraph structure
+        raw_text = temp_tag.get_text(separator='\n')
+        lines_txt = [line.strip() for line in raw_text.split('\n')]
+        lines_txt = [line for line in lines_txt if line]
+        text = ' '.join(lines_txt)
+        
         if text:
             # Formatting Preservation: Headings
             if temp_tag.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
-                # Convert level to markdown '#'
                 try:
                     level = int(temp_tag.name[1])
-                    # We map h1-># but for article content maybe start at ## or ###?
-                    # Let's keep it simple: exact mapping.
                     prefix = '#' * level
                     text = f"{prefix} {text}"
                 except:
                     pass
-            elif temp_tag.name == 'p':
-                 # Maybe add spacing logic later, but for now just text
-                 pass
-                 
+                     
             content_list.append(('text', text))
     return content_list

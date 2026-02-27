@@ -8,6 +8,7 @@
 
 import time
 import re
+import logging
 import google.generativeai as genai
 from typing import Optional, List, Callable, Tuple
 
@@ -84,12 +85,25 @@ class TranslationService:
         if not self.api_key or not self.cloud_model:
             return None, "API Key chưa được cấu hình"
 
-        prompt = f"""Bạn là biên dịch viên chuyên nghiệp. Dịch văn bản sau sang tiếng Việt.
-Yêu cầu: Sát nghĩa, tự nhiên, giữ nguyên Markdown và thuật ngữ.
-Văn bản:
----
-{text}
----"""
+        prompt = (
+            "<SYSTEM>\n"
+            "Bạn là một phần mềm dịch thuật tự động Anh-Việt.\n"
+            "NHIỆM VỤ DUY NHẤT: Dịch văn bản bên dưới sang tiếng Việt.\n\n"
+            "QUY TẮC BẮT BUỘC:\n"
+            "1. CHỈ trả về bản dịch tiếng Việt thuần túy. TUYỆT ĐỐI KHÔNG giải thích, KHÔNG ghi chú, KHÔNG bình luận, KHÔNG thêm tiêu đề 'Bản dịch'.\n"
+            "2. KHÔNG viết câu mở đầu kiểu 'Dưới đây là bản dịch...' hay câu kết kiểu 'Lưu ý:...'.\n"
+            "3. Giữ nguyên cấu trúc đoạn văn và xuống dòng của bản gốc.\n"
+            "4. Giữ nguyên Markdown formatting (##, **, -, v.v.) nếu có.\n"
+            "5. Giữ nguyên mọi placeholder __IMG_XXX__ — KHÔNG dịch, KHÔNG xóa chúng.\n"
+            "6. Dịch sát nghĩa, tự nhiên, phù hợp ngữ cảnh sách non-fiction.\n"
+            "</SYSTEM>\n\n"
+            f"{text}"
+        )
+
+        generation_config = genai.GenerationConfig(
+            temperature=0.3,
+            top_p=0.9,
+        )
         
         # Get current model name to try first
         primary_model_name = self.settings.get('cloud_model_name', 'gemini-2.5-pro')
@@ -121,9 +135,13 @@ Văn bản:
                 # Try generation with retries for THIS model
                 for attempt in range(retries):
                     try:
-                        response = current_model.generate_content(prompt)
+                        response = current_model.generate_content(
+                            prompt,
+                            generation_config=generation_config
+                        )
                         if response.text:
-                            return response.text.strip(), None
+                            cleaned = self._clean_translation_output(response.text)
+                            return cleaned, None
                     except Exception as e:
                         last_error = str(e)
                         if "429" in last_error or "Quota" in last_error:
@@ -261,6 +279,38 @@ Văn bản:
         final_text = self._restore_anchors(full_translation, anchors_map)
         
         return final_text
+
+    def _clean_translation_output(self, text: str) -> str:
+        """Clean AI output: strip preambles, code fences, trailing notes."""
+        result = text.strip()
+        
+        # 1. Remove code fences if AI wrapped output in ```
+        result = re.sub(r'^```[a-zA-Z]*\n?', '', result)
+        result = re.sub(r'\n?```$', '', result)
+        
+        # 2. Remove common preambles (Vietnamese and English)
+        preamble_patterns = [
+            r'^(?:D\u01b0\u1edbi \u0111\u00e2y l\u00e0|B\u1ea3n d\u1ecbch|Here is|Translation|\*\*B\u1ea3n d\u1ecbch\*\*)[^\n]*\n+',
+            r'^(?:##?\s*B\u1ea3n d\u1ecbch[^\n]*)\n+',
+        ]
+        for pattern in preamble_patterns:
+            result = re.sub(pattern, '', result, flags=re.IGNORECASE)
+        
+        # 3. Remove trailing notes
+        trailing_patterns = [
+            r'\n+(?:L\u01b0u \u00fd|Note|Ghi ch\u00fa|\*\*L\u01b0u \u00fd\*\*)[:\s].*$',
+            r'\n+---\n+.*$',
+        ]
+        for pattern in trailing_patterns:
+            result = re.sub(pattern, '', result, flags=re.IGNORECASE | re.DOTALL)
+        
+        # 4. Normalize whitespace: collapse 3+ newlines to 2, strip trailing spaces per line
+        lines = result.split('\n')
+        lines = [line.rstrip() for line in lines]
+        result = '\n'.join(lines)
+        result = re.sub(r'\n{3,}', '\n\n', result)
+        
+        return result.strip()
 
     def _protect_anchors(self, text: str) -> Tuple[str, dict]:
         """Replaces [Image: ...] tags with safely translatable placeholders."""
