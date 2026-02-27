@@ -52,28 +52,60 @@ class TranslationService:
         self._setup_cloud()
 
     def chunk_text(self, text: str, chunk_size: int = None) -> List[str]:
-        """Split text into chunks by paragraphs."""
+        """Split text into chunks, preferring Markdown header boundaries.
+        
+        Strategy:
+        1. Split by Markdown headings (## or ###) to keep sub-sections intact.
+        2. If a sub-section exceeds chunk_size, fallback to paragraph splitting.
+        3. Merge small adjacent sections if they fit within chunk_size.
+        """
         chunk_size = chunk_size or self.DEFAULT_CHUNK_SIZE
         if len(text) <= chunk_size:
             return [text]
         
-        paragraphs = re.split(r'\n\n+', text)
+        # Step 1: Split by Markdown headings (## or ###, but not # which is article title)
+        # Each section starts with a heading line
+        sections = re.split(r'(?=\n#{2,3} )', text)
+        sections = [s.strip() for s in sections if s.strip()]
+        
+        # Step 2: Process sections — split oversized ones by paragraphs
+        processed_sections = []
+        for section in sections:
+            if len(section) <= chunk_size:
+                processed_sections.append(section)
+            else:
+                # Fallback: split this large section by paragraphs
+                paragraphs = re.split(r'\n\n+', section)
+                sub_chunk = []
+                sub_size = 0
+                for para in paragraphs:
+                    para = para.strip()
+                    if not para:
+                        continue
+                    if sub_size + len(para) > chunk_size and sub_chunk:
+                        processed_sections.append('\n\n'.join(sub_chunk))
+                        sub_chunk = [para]
+                        sub_size = len(para)
+                    else:
+                        sub_chunk.append(para)
+                        sub_size += len(para)
+                if sub_chunk:
+                    processed_sections.append('\n\n'.join(sub_chunk))
+        
+        # Step 3: Merge small adjacent sections to reduce API calls
         chunks = []
         current_chunk = []
         current_size = 0
         
-        for para in paragraphs:
-            para = para.strip()
-            if not para: continue
-            
-            para_size = len(para)
-            if current_size + para_size > chunk_size and current_chunk:
+        for section in processed_sections:
+            section_size = len(section)
+            if current_size + section_size > chunk_size and current_chunk:
                 chunks.append('\n\n'.join(current_chunk))
-                current_chunk = [para]
-                current_size = para_size
+                current_chunk = [section]
+                current_size = section_size
             else:
-                current_chunk.append(para)
-                current_size += para_size
+                current_chunk.append(section)
+                current_size += section_size
         
         if current_chunk:
             chunks.append('\n\n'.join(current_chunk))

@@ -44,6 +44,10 @@ def extract_content_from_tags(
 ) -> List:
     """Extracts text and image data from a list of BeautifulSoup tags."""
     content_list = []
+    
+    # Collect heading titles to detect duplicate captions
+    heading_titles = set()
+    
     for element in tags:
         if not isinstance(element, Tag):
             continue
@@ -51,6 +55,18 @@ def extract_content_from_tags(
         temp_tag = temp_soup.find(element.name)
         if not temp_tag:
             continue
+        
+        # --- Phase 7: Remove junk HTML elements ---
+        # Decompose nav, aside, footer, and toc-related elements
+        for junk_tag in temp_tag.find_all(['nav', 'aside', 'footer']):
+            junk_tag.decompose()
+        # Also remove elements with toc-related IDs/classes
+        for junk_tag in temp_tag.find_all(attrs={'id': lambda x: x and 'toc' in x.lower()}):
+            junk_tag.decompose()
+        for junk_tag in temp_tag.find_all(attrs={'class': lambda x: x and any('toc' in c.lower() for c in (x if isinstance(x, list) else [x]))}):
+            junk_tag.decompose()
+        for junk_tag in temp_tag.find_all(attrs={'epub:type': lambda x: x and 'toc' in x.lower()}):
+            junk_tag.decompose()
         
         # Check if the tag itself is an image
         images_to_process = temp_tag.find_all('img')
@@ -64,21 +80,26 @@ def extract_content_from_tags(
                 if image_item:
                     anchor = save_image_to_temp(
                         image_item, temp_image_dir)
-                    # Try to find caption (complex if we re-parsed just the img)
-                    # For direct img, we might have lost the figure context if we only passed the img tag.
-                    # But SmartSplitter tries to pass containers.
+                    
+                    # --- Phase 7: Clean messy captions ---
                     caption = ""
                     if img_tag.parent and img_tag.parent.name == 'figure':
                          caption_tag = img_tag.parent.find('figcaption')
                          if caption_tag:
-                             caption = caption_tag.get_text(strip=True)
+                              raw_caption = caption_tag.get_text(strip=True)
+                              # Skip if caption is too long (likely junk descriptions)
+                              if len(raw_caption) > 150:
+                                  caption = ""
+                              # Skip if caption duplicates a heading title
+                              elif any(raw_caption.lower().startswith(h.lower()[:20]) for h in heading_titles if h):
+                                  caption = ""
+                              else:
+                                  caption = raw_caption
 
                     content_list.append(
                         ('image', {'anchor': anchor, 'caption': caption}))
             
             # Decompose to remove from text
-            # If temp_tag IS the image, decomposing it might be weird if we access it later?
-            # But we only access .get_text() later.
             if img_tag != temp_tag:
                  img_tag.decompose()
         
@@ -99,6 +120,8 @@ def extract_content_from_tags(
                     level = int(temp_tag.name[1])
                     prefix = '#' * level
                     text = f"{prefix} {text}"
+                    # Track heading text for caption dedup
+                    heading_titles.add(text.lstrip('# ').strip())
                 except:
                     pass
                      
