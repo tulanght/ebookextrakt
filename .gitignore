@@ -31,11 +31,24 @@ Output/
 *.txt
 *.log
 
+
 # Large Samples & Debug
 test_samples/
 debug_*.py
+test_webview_output/
+verify_*.py
+temp_*.py
+scripts/test_*.py
+scripts/verify_*.py
 
 # User Data (Database, Settings, Sensitive Info)
 user_data/
 *.db
 settings.json
+
+# AI Workflows & Documentation (Local Only)
+.agents/
+docs/ai/
+AGENTS.md
+WORKFLOW.md
+.gemini/
