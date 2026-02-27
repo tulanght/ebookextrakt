@@ -65,10 +65,9 @@ class BookCard(ctk.CTkFrame):
         if cover_path and Path(cover_path).exists():
             try:
                 img = Image.open(cover_path)
-                # Scale to fit within cover_w x cover_h, crop to fill exactly
-                img = ImageOps.fit(img, (cover_w, cover_h), method=Image.LANCZOS)
-                # Use ImageTk.PhotoImage instead of CTkImage to avoid DPI scaling issues
-                self.cover_image = ImageTk.PhotoImage(img)
+                # Provide a 2x resolution source so CTkImage has enough pixels for HiDPI
+                img = ImageOps.fit(img, (cover_w * 2, cover_h * 2), method=Image.LANCZOS)
+                self.cover_image = ctk.CTkImage(light_image=img, dark_image=img, size=(cover_w, cover_h))
             except Exception as e:
                 print(f"Error loading cover: {e}")
         
