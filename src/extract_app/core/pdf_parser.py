@@ -72,8 +72,35 @@ def parse_pdf(filepath: str) -> Dict[str, Any]:
         doc: fitz.Document = fitz.open(filepath)
 
         meta = doc.metadata
-        results['metadata']['title'] = meta.get('title', Path(filepath).stem)
-        results['metadata']['author'] = meta.get('author', 'Không rõ')
+        
+        # 1. Extract Title
+        title = meta.get('title', '').strip()
+        if not title:
+            # Fallback: clean filename
+            stem = Path(filepath).stem
+            stem = re.sub(r'\s*\(Z-Library\)', '', stem, flags=re.IGNORECASE)
+            stem = re.sub(r'_(pdf|epub|mobi)$', '', stem, flags=re.IGNORECASE)
+            title = stem.strip()
+        
+        # 2. Extract Author
+        author = meta.get('author', 'Không rõ')
+        
+        # 3. Extract Year
+        creation_date = meta.get('creationDate', '')
+        published_year = ""
+        # Format is usually D:YYYYMMDD...
+        if creation_date.startswith('D:') and len(creation_date) >= 6:
+            published_year = creation_date[2:6]
+        else:
+            # Fallback year from title/stem: e.g. "Some Book (2020)"
+            year_match = re.search(r'\((\d{4})\)', title)
+            if year_match:
+                published_year = year_match.group(1)
+                title = re.sub(r'\s*\(\d{4}\)', '', title).strip()
+                
+        results['metadata']['title'] = title
+        results['metadata']['author'] = author
+        results['metadata']['published_year'] = published_year
 
         # Extract cover image from the first page
         cover_path = ""

@@ -46,14 +46,43 @@ def parse_epub(filepath: str) -> Dict[str, Any]:
         book = epub.read_epub(filepath)
 
         # --- Trích xuất Metadata & Ảnh bìa ---
+        # 1. Extract Title
+        title = ""
         try:
-            results['metadata']['title'] = book.get_metadata('DC', 'title')[0][0]
+            title = book.get_metadata('DC', 'title')[0][0].strip()
         except (IndexError, TypeError):
-            results['metadata']['title'] = Path(filepath).stem
+            pass
+            
+        if not title:
+            stem = Path(filepath).stem
+            stem = re.sub(r'\s*\(Z-Library\)', '', stem, flags=re.IGNORECASE)
+            stem = re.sub(r'_(pdf|epub|mobi)$', '', stem, flags=re.IGNORECASE)
+            title = stem.strip()
+            
+        results['metadata']['title'] = title
+
+        # 2. Extract Author
         try:
             results['metadata']['author'] = book.get_metadata('DC', 'creator')[0][0]
         except (IndexError, TypeError):
             results['metadata']['author'] = 'Không rõ'
+            
+        # 3. Extract Year
+        published_year = ""
+        try:
+            # EPUB dates are usually ISO format "YYYY-MM-DD"
+            date_meta = book.get_metadata('DC', 'date')[0][0]
+            if len(date_meta) >= 4:
+                published_year = date_meta[:4]
+        except (IndexError, TypeError):
+            # Fallback year from title/stem: e.g. "Some Book (2020)"
+            year_match = re.search(r'\((\d{4})\)', title)
+            if year_match:
+                published_year = year_match.group(1)
+                title = re.sub(r'\s*\(\d{4}\)', '', title).strip()
+                results['metadata']['title'] = title # Update title if year was removed
+
+        results['metadata']['published_year'] = published_year
 
         cover_path = ""
         cover_id = None

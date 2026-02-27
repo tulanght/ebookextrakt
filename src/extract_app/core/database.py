@@ -43,6 +43,7 @@ class DatabaseManager:
                 source_path TEXT UNIQUE,
                 category TEXT,
                 tags TEXT,
+                published_year TEXT,
                 added_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -125,6 +126,14 @@ class DatabaseManager:
              except Exception as e:
                  print(f"[DB] Book Migration failed: {e}")
 
+        if 'published_year' not in book_cols:
+             print("[DB] Migration: Adding published_year to books table.")
+             try:
+                 cursor.execute("ALTER TABLE books ADD COLUMN published_year TEXT")
+                 conn.commit()
+             except Exception as e:
+                 print(f"[DB] Book Migration (published_year) failed: {e}")
+
         # --- Articles Table Migrations ---
         cursor.execute("PRAGMA table_info(articles)")
         art_cols = [row['name'] for row in cursor.fetchall()]
@@ -183,15 +192,15 @@ class DatabaseManager:
 
     # --- CRUD Operations ---
 
-    def add_book(self, title: str, author: str, source_path: str, cover_path: str = "") -> int:
+    def add_book(self, title: str, author: str, source_path: str, cover_path: str = "", published_year: str = "") -> int:
         """Adds a book to the database. Returns book_id."""
         conn = self._get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute("""
-                INSERT OR IGNORE INTO books (title, author, source_path, cover_path)
-                VALUES (?, ?, ?, ?)
-            """, (title, author, source_path, cover_path))
+                INSERT OR IGNORE INTO books (title, author, source_path, cover_path, published_year)
+                VALUES (?, ?, ?, ?, ?)
+            """, (title, author, source_path, cover_path, published_year))
             
             # If ignore happened (duplicate), we need the ID
             if cursor.lastrowid and cursor.lastrowid > 0:

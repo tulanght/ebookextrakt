@@ -16,8 +16,10 @@ from ...core import webview_generator
 import os
 import webbrowser
 import shutil
+import datetime
 from .theme import Colors, Fonts, Spacing
 from .editor_view import DualViewEditor
+from .tooltip import ToolTip
 
 class BookCard(ctk.CTkFrame):
     """
@@ -37,9 +39,16 @@ class BookCard(ctk.CTkFrame):
         self.on_delete = on_delete
         
         self.item_id = book_data['id']
-        title = book_data.get('title', 'Unknown Title')
+        full_title = book_data.get('title', 'Unknown Title')
         author = book_data.get('author', 'Unknown Author')
         cover_path = book_data.get('cover_path', '')
+        published_year = book_data.get('published_year', '')
+        category = book_data.get('category', '')
+        
+        # Fixed card size
+        self.configure(width=220, height=360)
+        self.grid_propagate(False)
+        self.pack_propagate(False)
         
         # Hover Effect Triggers
         self.bind("<Enter>", self._on_enter)
@@ -76,27 +85,52 @@ class BookCard(ctk.CTkFrame):
         
         # 2. Info Frame
         self.info_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.info_frame.grid(row=1, column=0, sticky="ew", padx=Spacing.MD, pady=(0, Spacing.LG))
+        self.info_frame.grid(row=1, column=0, sticky="nsew", padx=Spacing.MD, pady=(0, Spacing.MD))
         self.info_frame.grid_columnconfigure(0, weight=1)
         
+        # Truncate logic for title (rough approx for 2 lines)
+        display_title = full_title
+        if len(display_title) > 42:
+            display_title = display_title[:39] + "..."
+            
         # Title
         self.title_label = ctk.CTkLabel(
-            self.info_frame, text=title, font=Fonts.BODY_BOLD, 
+            self.info_frame, text=display_title, font=Fonts.BODY_BOLD, 
             text_color=Colors.TEXT_PRIMARY,
-            anchor="center", justify="center", wraplength=140
+            anchor="center", justify="center", wraplength=190
         )
         self.title_label.pack(fill="x", pady=(0, 2))
         self._bind_click(self.title_label)
         
-        # Author
+        # Tooltip for full title
+        if len(full_title) > 42:
+             ToolTip(self.title_label, full_title)
+        
+        # Author & Year
+        author_text = author
+        if published_year:
+             author_text = f"{author} • {published_year}"
+             
         self.author_label = ctk.CTkLabel(
-            self.info_frame, text=author, font=Fonts.SMALL,
+            self.info_frame, text=author_text, font=Fonts.SMALL,
             text_color=Colors.TEXT_MUTED
         )
-        self.author_label.pack(fill="x", pady=(0, Spacing.SM))
+        self.author_label.pack(fill="x", pady=(0, 2))
         self._bind_click(self.author_label)
 
-        # Delete Button
+        # Meta tags frame
+        self.meta_frame = ctk.CTkFrame(self.info_frame, fg_color="transparent")
+        self.meta_frame.pack(fill="x", pady=(0, Spacing.SM))
+        
+        if category:
+            lbl_cat = ctk.CTkLabel(
+                self.meta_frame, text=category, font=Fonts.TINY,
+                fg_color=Colors.BG_APP, text_color=Colors.PRIMARY,
+                corner_radius=4, padx=6, pady=2
+            )
+            lbl_cat.pack(side="top")
+
+        # Delete Button (Pushed to bottom)
         self.btn_delete = ctk.CTkButton(
             self.info_frame, text="🗑 Xóa", width=60, height=24,
             fg_color="transparent", text_color=Colors.DANGER,
@@ -104,7 +138,7 @@ class BookCard(ctk.CTkFrame):
             font=Fonts.TINY,
             command=self._handle_delete
         )
-        self.btn_delete.pack(pady=2)
+        self.btn_delete.pack(side="bottom", pady=4)
 
     def _bind_click(self, widget):
         widget.bind("<Button-1>", self._handle_click_event)
