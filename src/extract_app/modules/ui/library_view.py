@@ -249,8 +249,7 @@ class LibraryView(ctk.CTkFrame):
                 book_data=book, 
                 on_click=self._open_book_detail,
                 on_delete=self._delete_book
-            )
-            card.grid(row=row, column=col, sticky="nsew", padx=Spacing.MD, pady=Spacing.MD)
+            card.grid(row=row, column=col, sticky="n", padx=Spacing.MD, pady=Spacing.MD)
 
     def _delete_book(self, book_id: int):
         if messagebox.askyesno("Xác nhận xóa", "Bạn có chắc muốn xóa sách này khỏi thư viện?\n(File gốc vẫn được giữ nguyên)"):
