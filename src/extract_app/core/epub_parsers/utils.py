@@ -87,11 +87,8 @@ def extract_content_from_tags(
                          caption_tag = img_tag.parent.find('figcaption')
                          if caption_tag:
                               raw_caption = caption_tag.get_text(strip=True)
-                              # Skip if caption is too long (likely junk descriptions)
-                              if len(raw_caption) > 150:
-                                  caption = ""
-                              # Skip if caption duplicates a heading title
-                              elif any(raw_caption.lower().startswith(h.lower()[:20]) for h in heading_titles if h):
+                              # Only skip if caption is an exact duplicate of a heading title
+                              if any(raw_caption.lower().strip() == h.lower().strip() for h in heading_titles if h):
                                   caption = ""
                               else:
                                   caption = raw_caption
