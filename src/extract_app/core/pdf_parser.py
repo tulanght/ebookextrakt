@@ -55,12 +55,21 @@ def _parse_toc_from_text(doc: fitz.Document) -> List:
 # pylint: disable=too-many-locals, too-many-branches,from .toc_parser import parse_toc
 
 def _extract_chapter_with_heuristics(doc, start_page, end_page, chapter_title, temp_image_dir, debug_logger=None):
-    """Extracts pages and automatically splits them into child articles based on font-size heuristics."""
+    """Extracts pages and splits them into child articles based on font-size + bold heuristics.
+    
+    Strategy:
+    - Pass 1: Scan all spans to find the median (body) font size.
+    - Pass 2: Process line-by-line. A line is a "heading" if its first span is:
+        (a) font size > median + 3pt (clearly larger), OR
+        (b) font size > median AND uses a Bold font variant
+      AND the line text is short (< 120 chars, single-line).
+    - When a heading is detected, flush the current article and start a new one.
+    """
+    import statistics
     articles = []
     
-    # Pass 1: Determine baseline font size
+    # Pass 1: Determine baseline (body) font size
     sizes = []
-    import statistics
     for page_num in range(start_page, end_page):
         if page_num >= doc.page_count: continue
         page = doc.load_page(page_num)
@@ -69,56 +78,69 @@ def _extract_chapter_with_heuristics(doc, start_page, end_page, chapter_title, t
                 for l in b["lines"]:
                     for s in l["spans"]:
                         text = s["text"].strip()
-                        if text and len(text) > 2:
+                        if text and len(text) > 3:
                             sizes.append(round(s["size"], 1))
                             
     baseline_size = statistics.median(sizes) if sizes else 11.0
-    heading_threshold = baseline_size + 1.5
+    # Two thresholds:
+    #   - "clearly larger" (e.g. 21pt vs 15pt body) → always a heading
+    #   - "slightly larger + bold" (e.g. 16pt bold vs 15pt body) → heading if bold
+    major_threshold = baseline_size + 3.0   # e.g. 15 + 3 = 18
+    minor_threshold = baseline_size + 0.5   # e.g. 15 + 0.5 = 15.5
+
+    if debug_logger:
+        debug_logger.log(f"  [Heuristic] Baseline={baseline_size}pt, Major≥{major_threshold}pt, Minor≥{minor_threshold}pt+Bold")
 
     current_title = chapter_title
     current_content = []
     
+    # Pass 2: Process blocks line-by-line
     for page_num in range(start_page, end_page):
         if page_num >= doc.page_count: continue
         page = doc.load_page(page_num)
         
-        # Process Text Blocks
         blocks = page.get_text("dict")["blocks"]
         for b in blocks:
             if b["type"] == 0:
-                block_text = ""
-                first_span = None
-                
-                # Check first span for heading detection
-                for l in b["lines"]:
-                    for s in l["spans"]:
+                for line in b["lines"]:
+                    # Analyze the first non-empty span in this line
+                    first_span = None
+                    for s in line["spans"]:
                         if s["text"].strip():
                             first_span = s
                             break
-                    if first_span: break
-                
-                is_heading = False
-                if first_span and first_span["size"] >= heading_threshold:
-                    is_heading = True
-                
-                # Reconstruct block text
-                for l in b["lines"]:
-                    line_text = ""
-                    for s in l["spans"]:
-                        line_text += s["text"]
-                    block_text += line_text.strip() + "\n"
-                
-                block_text = block_text.strip()
-                if not block_text: continue
-                
-                # If it looks like a heading (large font, not too long), split here
-                if is_heading and len(block_text) < 150 and "\n" not in block_text.strip()[:50]:
-                    if current_content:
-                        articles.append({'title': current_title, 'content': current_content, 'children': []})
-                    current_title = block_text.replace('\n', ' ').strip()
-                    current_content = []
-                else:
-                    current_content.append(('text', block_text + "\n"))
+                    if not first_span:
+                        continue
+                    
+                    # Reconstruct line text
+                    line_text = "".join(s["text"] for s in line["spans"]).strip()
+                    if not line_text:
+                        continue
+                    
+                    span_size = round(first_span["size"], 1)
+                    font_name = first_span.get("font", "")
+                    is_bold = "Bold" in font_name or "bold" in font_name or bool(first_span.get("flags", 0) & (1 << 4))
+                    
+                    # Heading detection
+                    is_heading = False
+                    if span_size >= major_threshold and len(line_text) < 120:
+                        is_heading = True
+                    elif span_size >= minor_threshold and is_bold and len(line_text) < 120:
+                        # Bold + slightly larger → could be a sub-section heading
+                        # But we only want to split on MAJOR headings (species names),
+                        # not every bold sub-section like "TAXONOMY", "BEHAVIOR"
+                        # So we require size to be significantly above baseline
+                        if span_size >= baseline_size + 2.0:
+                            is_heading = True
+                    
+                    if is_heading:
+                        # Flush current article
+                        if current_content:
+                            articles.append({'title': current_title, 'content': current_content, 'children': []})
+                        current_title = line_text
+                        current_content = []
+                    else:
+                        current_content.append(('text', line_text + "\n"))
 
         # Process Images
         for img_index, img in enumerate(page.get_images(full=True)):
