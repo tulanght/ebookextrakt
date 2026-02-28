@@ -134,10 +134,12 @@ def parse_pdf(filepath: str) -> Dict[str, Any]:
         debug_logger.log(f"Đã xác định cấu trúc bằng phương pháp: {source}")
 
         content_tree = []
+        level_nodes = {}
+        
         toc.sort(key=lambda item: item[2])
         for i, item in enumerate(toc):
-            _, title, start_page = item
-            debug_logger.log(f"Đang xử lý chương: {title} (Trang {start_page})")
+            lvl, title, start_page = item
+            debug_logger.log(f"Đang xử lý chương: {title} (Trang {start_page}, Cấp {lvl})")
             start_page = max(start_page - 1, 0)
 
             end_page = doc.page_count
@@ -169,7 +171,22 @@ def parse_pdf(filepath: str) -> Dict[str, Any]:
 
             if chapter_content:
                 node = {'title': title, 'content': chapter_content, 'children': []}
-                content_tree.append(node)
+                
+                # Attach to parent based on hierarchy, or add as root
+                if lvl == 1 or not level_nodes:
+                    content_tree.append(node)
+                else:
+                    parent_lvl = lvl - 1
+                    while parent_lvl > 0 and parent_lvl not in level_nodes:
+                        parent_lvl -= 1
+                    
+                    if parent_lvl in level_nodes:
+                        level_nodes[parent_lvl]['children'].append(node)
+                    else:
+                        content_tree.append(node)
+                
+                # Update tracker for this level
+                level_nodes[lvl] = node
 
         results['content'] = content_tree
         doc.close()
