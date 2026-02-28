@@ -135,6 +135,8 @@ def _extract_chapter_with_heuristics(doc, start_page, end_page, chapter_title, t
         blocks = page.get_text("dict")["blocks"]
         for b in blocks:
             if b["type"] == 0:
+                # Accumulate lines within the block into a paragraph
+                block_lines = []
                 for line in b["lines"]:
                     # Analyze the first non-empty span in this line
                     first_span = None
@@ -167,13 +169,21 @@ def _extract_chapter_with_heuristics(doc, start_page, end_page, chapter_title, t
                             is_heading = True
                     
                     if is_heading:
+                        # Flush accumulated block lines first
+                        if block_lines:
+                            current_content.append(('text', " ".join(block_lines)))
+                            block_lines = []
                         # Flush current article
                         if current_content:
                             articles.append({'title': current_title, 'content': current_content, 'children': []})
                         current_title = line_text
                         current_content = []
                     else:
-                        current_content.append(('text', line_text + "\n"))
+                        block_lines.append(line_text)
+                
+                # Flush remaining block lines as a single paragraph
+                if block_lines:
+                    current_content.append(('text', " ".join(block_lines)))
 
         # Process Images
         for img_index, img in enumerate(page.get_images(full=True)):
