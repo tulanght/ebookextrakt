@@ -52,6 +52,93 @@ def _parse_toc_from_text(doc: fitz.Document) -> List:
     return toc
 
 
+# pylint: disable=too-many-locals, too-many-branches,from .toc_parser import parse_toc
+
+def _extract_chapter_with_heuristics(doc, start_page, end_page, chapter_title, temp_image_dir, debug_logger=None):
+    """Extracts pages and automatically splits them into child articles based on font-size heuristics."""
+    articles = []
+    
+    # Pass 1: Determine baseline font size
+    sizes = []
+    import statistics
+    for page_num in range(start_page, end_page):
+        if page_num >= doc.page_count: continue
+        page = doc.load_page(page_num)
+        for b in page.get_text("dict")["blocks"]:
+            if b["type"] == 0:
+                for l in b["lines"]:
+                    for s in l["spans"]:
+                        text = s["text"].strip()
+                        if text and len(text) > 2:
+                            sizes.append(round(s["size"], 1))
+                            
+    baseline_size = statistics.median(sizes) if sizes else 11.0
+    heading_threshold = baseline_size + 1.5
+
+    current_title = chapter_title
+    current_content = []
+    
+    for page_num in range(start_page, end_page):
+        if page_num >= doc.page_count: continue
+        page = doc.load_page(page_num)
+        
+        # Process Text Blocks
+        blocks = page.get_text("dict")["blocks"]
+        for b in blocks:
+            if b["type"] == 0:
+                block_text = ""
+                first_span = None
+                
+                # Check first span for heading detection
+                for l in b["lines"]:
+                    for s in l["spans"]:
+                        if s["text"].strip():
+                            first_span = s
+                            break
+                    if first_span: break
+                
+                is_heading = False
+                if first_span and first_span["size"] >= heading_threshold:
+                    is_heading = True
+                
+                # Reconstruct block text
+                for l in b["lines"]:
+                    line_text = ""
+                    for s in l["spans"]:
+                        line_text += s["text"]
+                    block_text += line_text.strip() + "\n"
+                
+                block_text = block_text.strip()
+                if not block_text: continue
+                
+                # If it looks like a heading (large font, not too long), split here
+                if is_heading and len(block_text) < 150 and "\n" not in block_text.strip()[:50]:
+                    if current_content:
+                        articles.append({'title': current_title, 'content': current_content, 'children': []})
+                    current_title = block_text.replace('\n', ' ').strip()
+                    current_content = []
+                else:
+                    current_content.append(('text', block_text + "\n"))
+
+        # Process Images
+        for img_index, img in enumerate(page.get_images(full=True)):
+            img_xref = img[0]
+            img_base = doc.extract_image(img_xref)
+            if img_base:
+                img_bytes = img_base["image"]
+                img_ext = img_base["ext"]
+                img_filename = f"pdf_p{page_num+1}_i{img_index}.{img_ext}"
+                img_path = temp_image_dir / img_filename
+                with open(img_path, "wb") as f_img:
+                    f_img.write(img_bytes)
+                img_data = {'anchor': str(img_path), 'caption': ''}
+                current_content.append(('image', img_data))
+
+    if current_content or not articles:
+        articles.append({'title': current_title, 'content': current_content, 'children': []})
+        
+    return articles
+
 # pylint: disable=too-many-locals, too-many-branches, too-many-statements
 def parse_pdf(filepath: str) -> Dict[str, Any]:
     """
@@ -147,30 +234,20 @@ def parse_pdf(filepath: str) -> Dict[str, Any]:
                 next_start_page = toc[i+1][2] - 1
                 end_page = next_start_page if next_start_page > start_page else start_page + 1
 
-            chapter_content = []
-            for page_num in range(start_page, end_page):
-                if page_num >= doc.page_count:
-                    continue
-                page = doc.load_page(page_num)
-                page_text = page.get_text("text")
-                if page_text.strip():
-                    chapter_content.append(('text', page_text))
+            # Extract text and images with semantic splitting if applicable
+            sub_articles = []
+            if end_page > start_page:
+                sub_articles = _extract_chapter_with_heuristics(doc, start_page, end_page, title, temp_image_dir, debug_logger)
+            else:
+                # Container node with no text
+                sub_articles = [{'title': title, 'content': [], 'children': []}]
 
-                for img_index, img in enumerate(page.get_images(full=True)):
-                    img_xref = img[0]
-                    img_base = doc.extract_image(img_xref)
-                    if img_base:
-                        img_bytes = img_base["image"]
-                        img_ext = img_base["ext"]
-                        img_filename = f"pdf_p{page_num+1}_i{img_index}.{img_ext}"
-                        img_path = temp_image_dir / img_filename
-                        with open(img_path, "wb") as f_img:
-                            f_img.write(img_bytes)
-                        img_data = {'anchor': str(img_path), 'caption': ''}
-                        chapter_content.append(('image', img_data))
-
-            if chapter_content:
-                node = {'title': title, 'content': chapter_content, 'children': []}
+            if sub_articles:
+                if len(sub_articles) == 1:
+                    node = sub_articles[0]
+                else:
+                    # Treat the first article as chapter intro, rest as children
+                    node = {'title': title, 'content': sub_articles[0]['content'], 'children': sub_articles[1:]}
                 
                 # Attach to parent based on hierarchy, or add as root
                 if lvl == 1 or not level_nodes:
