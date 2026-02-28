@@ -411,7 +411,7 @@ class BookDetailWindow(ctk.CTkToplevel):
         is_leaf = article.get('is_leaf', 1)
         
         if is_parent:
-            # Parent article: show as a sub-group header
+            # Parent article: show as a sub-group header with translate button
             art_frame = ctk.CTkFrame(
                 self.list_frame, fg_color=Colors.BG_CARD,
                 corner_radius=Spacing.BUTTON_RADIUS
@@ -424,10 +424,30 @@ class BookDetailWindow(ctk.CTkToplevel):
                 font=Fonts.BODY_BOLD, text_color=Colors.TEXT_SECONDARY, anchor="w"
             ).pack(side="left", padx=Spacing.SM, fill="x", expand=True)
             
+            # Right side: word count + action buttons
+            right_frame = ctk.CTkFrame(art_frame, fg_color="transparent")
+            right_frame.pack(side="right", fill="y", padx=Spacing.SM)
+            
             ctk.CTkLabel(
-                art_frame, text=f"{word_count:,} từ (giới thiệu)",
+                right_frame, text=f"{word_count:,} từ (giới thiệu)",
                 text_color=Colors.TEXT_MUTED, font=Fonts.TINY
-            ).pack(side="right", padx=Spacing.MD, pady=Spacing.XS)
+            ).pack(side="left", padx=(Spacing.SM, Spacing.MD))
+            
+            if is_translated:
+                ctk.CTkButton(
+                    right_frame, text="Biên tập", width=72, height=26,
+                    fg_color="transparent", border_width=1, border_color=Colors.SUCCESS,
+                    text_color=Colors.SUCCESS, hover_color=Colors.BG_CARD_HOVER,
+                    font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
+                    command=lambda a=article: self._open_dual_view(a)
+                ).pack(side="left", padx=2, pady=4)
+            elif word_count > 50:
+                ctk.CTkButton(
+                    right_frame, text="📥 Dịch Lưu trữ", width=110, height=26,
+                    fg_color=Colors.PRIMARY, text_color=Colors.TEXT_PRIMARY, hover_color=Colors.PRIMARY_HOVER,
+                    font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
+                    command=lambda a=article: self._translate_article(a)
+                ).pack(side="left", padx=2, pady=4)
             return
         
         # Leaf article row

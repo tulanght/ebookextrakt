@@ -54,6 +54,30 @@ def _parse_toc_from_text(doc: fitz.Document) -> List:
 
 # pylint: disable=too-many-locals, too-many-branches,from .toc_parser import parse_toc
 
+def _extract_flat_chapter(doc, start_page, end_page, chapter_title, temp_image_dir):
+    """Extracts pages as a single flat article — no heading splitting.
+    Used for utility sections like INDEX, GLOSSARY, REFERENCES."""
+    content = []
+    for page_num in range(start_page, end_page):
+        if page_num >= doc.page_count:
+            continue
+        page = doc.load_page(page_num)
+        text = page.get_text("text").strip()
+        if text:
+            content.append(('text', text + "\n"))
+        for img_index, img in enumerate(page.get_images(full=True)):
+            img_xref = img[0]
+            img_base = doc.extract_image(img_xref)
+            if img_base:
+                img_bytes = img_base["image"]
+                img_ext = img_base["ext"]
+                img_filename = f"pdf_p{page_num+1}_i{img_index}.{img_ext}"
+                img_path = temp_image_dir / img_filename
+                with open(img_path, "wb") as f_img:
+                    f_img.write(img_bytes)
+                content.append(('image', {'anchor': str(img_path), 'caption': ''}))
+    return [{'title': chapter_title, 'content': content, 'children': []}]
+
 def _extract_chapter_with_heuristics(doc, start_page, end_page, chapter_title, temp_image_dir, debug_logger=None):
     """Extracts pages and splits them into child articles based on font-size + bold heuristics.
     
@@ -258,8 +282,23 @@ def parse_pdf(filepath: str) -> Dict[str, Any]:
 
             # Extract text and images with semantic splitting if applicable
             sub_articles = []
+            
+            # Skip splitting for utility/reference sections
+            _SKIP_SPLIT_PATTERNS = [
+                'INDEX', 'GLOSSARY', 'REFERENCES', 'BIBLIOGRAPHY',
+                'CONTENTS', 'TABLE OF CONTENTS', 'APPENDIX', 'APPENDICES',
+                'ENDNOTES', 'FOOTNOTES', 'COPYRIGHT', 'COLOPHON',
+                'ABOUT THE AUTHOR', 'ACKNOWLEDGMENT', 'ABOUT THIS'
+            ]
+            title_upper = title.strip().upper()
+            should_skip_split = any(title_upper.startswith(pat) for pat in _SKIP_SPLIT_PATTERNS)
+            
             if end_page > start_page:
-                sub_articles = _extract_chapter_with_heuristics(doc, start_page, end_page, title, temp_image_dir, debug_logger)
+                if should_skip_split:
+                    debug_logger.log(f"  [Skip Split] Utility section detected: {title}")
+                    sub_articles = _extract_flat_chapter(doc, start_page, end_page, title, temp_image_dir)
+                else:
+                    sub_articles = _extract_chapter_with_heuristics(doc, start_page, end_page, title, temp_image_dir, debug_logger)
             else:
                 # Container node with no text
                 sub_articles = [{'title': title, 'content': [], 'children': []}]
