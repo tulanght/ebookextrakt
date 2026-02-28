@@ -359,101 +359,157 @@ class BookDetailWindow(ctk.CTkToplevel):
             widget.destroy()
 
         for chapter in self.chapters:
-            # Chapter Header
+            all_articles = chapter.get('articles', [])
+            
+            # Calculate chapter-level totals
+            total_words = sum(a.get('word_count', 0) or 0 for a in all_articles)
+            total_translated = sum(1 for a in all_articles if a.get('status') == 'translated' and a.get('is_leaf', 1))
+            total_leaf = sum(1 for a in all_articles if a.get('is_leaf', 1))
+            
+            # ── Chapter Header ──
             chap_title = chapter.get('title', 'Unknown Chapter')
-            frame = ctk.CTkFrame(self.list_frame, fg_color="transparent")
-            frame.pack(fill="x", pady=Spacing.SM)
+            chap_frame = ctk.CTkFrame(self.list_frame, fg_color=Colors.BG_CARD_HOVER, corner_radius=Spacing.BUTTON_RADIUS)
+            chap_frame.pack(fill="x", pady=(Spacing.MD, Spacing.XS), padx=0)
             
             ctk.CTkLabel(
-                frame, text=chap_title, font=Fonts.H3, 
+                chap_frame, text=f"📂 {chap_title}", font=Fonts.H3, 
                 text_color=Colors.TEXT_PRIMARY, anchor="w"
-            ).pack(fill="x", pady=Spacing.SM)
+            ).pack(side="left", fill="x", expand=True, padx=Spacing.MD, pady=Spacing.SM)
+
+            # Chapter stats
+            progress_text = f"{total_translated}/{total_leaf}" if total_leaf > 0 else "0"
+            stats_text = f"{total_words:,} từ | {progress_text} đã dịch"
+            ctk.CTkLabel(
+                chap_frame, text=stats_text, font=Fonts.TINY,
+                text_color=Colors.TEXT_MUTED
+            ).pack(side="right", padx=Spacing.MD, pady=Spacing.SM)
             
-            # Articles
-            for article in chapter.get('articles', []):
-                art_frame = ctk.CTkFrame(
-                    self.list_frame, fg_color=Colors.BG_APP, 
-                    corner_radius=Spacing.BUTTON_RADIUS
-                )
-                art_frame.pack(fill="x", pady=2, padx=Spacing.MD)
+            # ── Separate parent containers (is_leaf=0) from leaf articles (is_leaf=1) ──
+            parent_articles = [a for a in all_articles if not a.get('is_leaf', 1)]
+            leaf_articles = [a for a in all_articles if a.get('is_leaf', 1)]
+            
+            # If there are parent (container) articles with children, build hierarchy
+            if parent_articles and leaf_articles:
+                for parent in parent_articles:
+                    parent_word_count = parent.get('word_count', 0) or 0
+                    # Show parent as a sub-section header  
+                    if parent_word_count > 0:
+                        self._render_article_row(parent, indent=Spacing.MD, is_parent=True)
                 
-                status = article.get('status', 'new')
-                is_translated = status == 'translated'
-                status_color = Colors.SUCCESS if is_translated else Colors.TEXT_MUTED
-                
-                # Status Dot
-                canvas = ctk.CTkCanvas(art_frame, width=10, height=10, bg=Colors.BG_APP, highlightthickness=0)
-                canvas.create_oval(2, 2, 8, 8, fill=status_color)
-                canvas.pack(side="left", padx=Spacing.SM)
-                
-                # Right Side Container (Meta + Buttons)
-                right_frame = ctk.CTkFrame(art_frame, fg_color="transparent")
-                right_frame.pack(side="right", fill="y", padx=Spacing.SM)
+                # Show leaf articles indented
+                for article in leaf_articles:
+                    self._render_article_row(article, indent=Spacing.XL + Spacing.MD)
+            else:
+                # Flat articles (no hierarchy) — render all directly
+                for article in all_articles:
+                    self._render_article_row(article, indent=Spacing.MD)
+                     
+    def _render_article_row(self, article, indent=0, is_parent=False):
+        """Renders a single article row with status, title, word count, and action buttons."""
+        status = article.get('status', 'new')
+        is_translated = status == 'translated'
+        is_leaf = article.get('is_leaf', 1)
+        
+        if is_parent:
+            # Parent article: show as a sub-group header
+            art_frame = ctk.CTkFrame(
+                self.list_frame, fg_color=Colors.BG_CARD,
+                corner_radius=Spacing.BUTTON_RADIUS
+            )
+            art_frame.pack(fill="x", pady=(Spacing.SM, 1), padx=indent)
+            
+            word_count = article.get('word_count', 0) or 0
+            ctk.CTkLabel(
+                art_frame, text=f"  📄 {article.get('subtitle', '')}", 
+                font=Fonts.BODY_BOLD, text_color=Colors.TEXT_SECONDARY, anchor="w"
+            ).pack(side="left", padx=Spacing.SM, fill="x", expand=True)
+            
+            ctk.CTkLabel(
+                art_frame, text=f"{word_count:,} từ (giới thiệu)",
+                text_color=Colors.TEXT_MUTED, font=Fonts.TINY
+            ).pack(side="right", padx=Spacing.MD, pady=Spacing.XS)
+            return
+        
+        # Leaf article row
+        art_frame = ctk.CTkFrame(
+            self.list_frame, fg_color=Colors.BG_APP, 
+            corner_radius=Spacing.BUTTON_RADIUS
+        )
+        art_frame.pack(fill="x", pady=2, padx=indent)
+        
+        status_color = Colors.SUCCESS if is_translated else Colors.TEXT_MUTED
+        
+        # Status Dot
+        canvas = ctk.CTkCanvas(art_frame, width=10, height=10, bg=Colors.BG_APP, highlightthickness=0)
+        canvas.create_oval(2, 2, 8, 8, fill=status_color)
+        canvas.pack(side="left", padx=Spacing.SM)
+        
+        # Right Side Container (Meta + Buttons)
+        right_frame = ctk.CTkFrame(art_frame, fg_color="transparent")
+        right_frame.pack(side="right", fill="y", padx=Spacing.SM)
 
-                # Word Count Display
-                word_count = article.get('word_count', 0) or 0
-                translated_at = article.get('translated_at')
-                
-                meta_str = f"{word_count:,} từ"
-                if translated_at:
-                    meta_str += f" | {str(translated_at)[:10]}"
-                    
-                ctk.CTkLabel(
-                    right_frame, text=meta_str, text_color=Colors.TEXT_MUTED, font=Fonts.TINY
-                ).pack(side="left", padx=(Spacing.SM, Spacing.MD))
-                
-                # Title & Status (Left aligned)
-                ctk.CTkLabel(
-                    art_frame, text=article.get('subtitle', 'No Subtitle'), 
-                    font=Fonts.BODY, text_color=Colors.TEXT_PRIMARY, anchor="w"
-                ).pack(side="left", padx=Spacing.SM, fill="x", expand=True)
+        # Word Count Display
+        word_count = article.get('word_count', 0) or 0
+        translated_at = article.get('translated_at')
+        
+        meta_str = f"{word_count:,} từ"
+        if translated_at:
+            meta_str += f" | {str(translated_at)[:10]}"
+            
+        ctk.CTkLabel(
+            right_frame, text=meta_str, text_color=Colors.TEXT_MUTED, font=Fonts.TINY
+        ).pack(side="left", padx=(Spacing.SM, Spacing.MD))
+        
+        # Title & Status (Left aligned)
+        ctk.CTkLabel(
+            art_frame, text=article.get('subtitle', 'No Subtitle'), 
+            font=Fonts.BODY, text_color=Colors.TEXT_PRIMARY, anchor="w"
+        ).pack(side="left", padx=Spacing.SM, fill="x", expand=True)
 
-                # Translate Button / View Button (only for leaf articles)
-                is_leaf = article.get('is_leaf', 1)
-                
-                if is_leaf:
-                    if is_translated:
-                         # Edit button
-                         ctk.CTkButton(
-                             right_frame, text="Biên tập", width=72, height=26,
-                             fg_color="transparent", border_width=1, border_color=Colors.SUCCESS,
-                             text_color=Colors.SUCCESS, hover_color=Colors.BG_CARD_HOVER,
-                             font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
-                             command=lambda a=article: self._open_dual_view(a)
-                         ).pack(side="left", padx=2, pady=4)
-                         # Website variant button
-                         has_web = bool(article.get('website_text'))
-                         web_fg = Colors.BG_CARD if has_web else "transparent"
-                         ctk.CTkButton(
-                             right_frame, text="🌐", width=32, height=26,
-                             fg_color=web_fg, border_width=1, border_color=Colors.PRIMARY,
-                             text_color=Colors.PRIMARY, hover_color=Colors.BG_CARD_HOVER,
-                             font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
-                             command=lambda a=article: self._transform_article(a, 'website')
-                         ).pack(side="left", padx=2, pady=4)
-                         # Facebook variant button
-                         has_fb = bool(article.get('facebook_text'))
-                         fb_fg = Colors.BG_CARD if has_fb else "transparent"
-                         ctk.CTkButton(
-                             right_frame, text="📱", width=32, height=26,
-                             fg_color=fb_fg, border_width=1, border_color=Colors.WARNING,
-                             text_color=Colors.WARNING, hover_color=Colors.BG_CARD_HOVER,
-                             font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
-                             command=lambda a=article: self._transform_article(a, 'facebook')
-                         ).pack(side="left", padx=2, pady=4)
-                    else:
-                         ctk.CTkButton(
-                             right_frame, text="📥 Dịch Lưu trữ", width=110, height=26, 
-                             fg_color=Colors.PRIMARY, text_color=Colors.TEXT_PRIMARY, hover_color=Colors.PRIMARY_HOVER,
-                             font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
-                             command=lambda a=article: self._translate_article(a)
-                         ).pack(side="left", padx=2, pady=4)
-                else:
-                    # Container articles
-                    ctk.CTkLabel(
-                        right_frame, text="(Mục lục)", 
-                        text_color=Colors.TEXT_MUTED, font=Fonts.TINY
-                    ).pack(side="left", padx=Spacing.MD, pady=2)
+        # Translate Button / View Button (only for leaf articles)
+        if is_leaf:
+            if is_translated:
+                 # Edit button
+                 ctk.CTkButton(
+                     right_frame, text="Biên tập", width=72, height=26,
+                     fg_color="transparent", border_width=1, border_color=Colors.SUCCESS,
+                     text_color=Colors.SUCCESS, hover_color=Colors.BG_CARD_HOVER,
+                     font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
+                     command=lambda a=article: self._open_dual_view(a)
+                 ).pack(side="left", padx=2, pady=4)
+                 # Website variant button
+                 has_web = bool(article.get('website_text'))
+                 web_fg = Colors.BG_CARD if has_web else "transparent"
+                 ctk.CTkButton(
+                     right_frame, text="🌐", width=32, height=26,
+                     fg_color=web_fg, border_width=1, border_color=Colors.PRIMARY,
+                     text_color=Colors.PRIMARY, hover_color=Colors.BG_CARD_HOVER,
+                     font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
+                     command=lambda a=article: self._transform_article(a, 'website')
+                 ).pack(side="left", padx=2, pady=4)
+                 # Facebook variant button
+                 has_fb = bool(article.get('facebook_text'))
+                 fb_fg = Colors.BG_CARD if has_fb else "transparent"
+                 ctk.CTkButton(
+                     right_frame, text="📱", width=32, height=26,
+                     fg_color=fb_fg, border_width=1, border_color=Colors.WARNING,
+                     text_color=Colors.WARNING, hover_color=Colors.BG_CARD_HOVER,
+                     font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
+                     command=lambda a=article: self._transform_article(a, 'facebook')
+                 ).pack(side="left", padx=2, pady=4)
+            else:
+                 ctk.CTkButton(
+                     right_frame, text="📥 Dịch Lưu trữ", width=110, height=26, 
+                     fg_color=Colors.PRIMARY, text_color=Colors.TEXT_PRIMARY, hover_color=Colors.PRIMARY_HOVER,
+                     font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
+                     command=lambda a=article: self._translate_article(a)
+                 ).pack(side="left", padx=2, pady=4)
+        else:
+            # Container articles
+            ctk.CTkLabel(
+                right_frame, text="(Mục lục)", 
+                text_color=Colors.TEXT_MUTED, font=Fonts.TINY
+            ).pack(side="left", padx=Spacing.MD, pady=2)
                      
     def _translate_article(self, article):
         """Handle translation trigger."""
