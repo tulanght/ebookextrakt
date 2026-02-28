@@ -253,18 +253,26 @@ class MainWindow(ctk.CTk):
                 # ... same restructuring logic as before ...
                 final_tree = []
                 for chapter_node in raw_results.get('content', []):
-                    articles = content_structurer.structure_pdf_articles(
-                        chapter_node.get('content', [])
-                    )
-                    children_nodes = [
-                        {'title': article.get('subtitle', 'Nội dung'),
-                         'content': article.get('content', []),
-                         'children': []}
-                        for article in articles if article.get('subtitle') or article.get('content')
-                    ]
-                    chapter_node['children'] = children_nodes
-                    chapter_node['content'] = []
-                    final_tree.append(chapter_node)
+                    existing_children = chapter_node.get('children', [])
+                    
+                    if existing_children:
+                        # Children already set by parse_pdf (heuristic splitting)
+                        # Keep them as-is, don't overwrite
+                        final_tree.append(chapter_node)
+                    else:
+                        # No children from parser — use content_structurer as fallback
+                        articles = content_structurer.structure_pdf_articles(
+                            chapter_node.get('content', [])
+                        )
+                        children_nodes = [
+                            {'title': article.get('subtitle', 'Nội dung'),
+                             'content': article.get('content', []),
+                             'children': []}
+                            for article in articles if article.get('subtitle') or article.get('content')
+                        ]
+                        chapter_node['children'] = children_nodes
+                        chapter_node['content'] = []
+                        final_tree.append(chapter_node)
                 raw_results['content'] = final_tree
                 results = raw_results
             elif file_extension == ".epub":
