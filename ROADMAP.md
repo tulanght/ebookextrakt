@@ -17,7 +17,7 @@ Phát triển `ExtractPDF-EPUB App` thành một **Trung tâm Nội dung Thông 
 * [x] Xây dựng Lịch sử Trích xuất.
 * [x] **v2.1.0**: Tạo Design System (`theme.py`) với bảng màu Dark Navy.
 * [x] **v2.1.0**: Viết lại Sidebar, Dashboard, Top Bar, Loading, Log Panel.
-* [ ] **Tiếp theo**: Modernize Library Grid View & Settings View.
+* [x] **Tiếp theo**: Modernize Library Grid View & Settings View.
 
 ### Giai đoạn 2: Nâng cao Lõi Phân tích & Lưu trữ (Advanced Parsing & Storage)
 *Mục tiêu: Tăng cường độ chính xác của parser và mở rộng khả năng lưu trữ.*

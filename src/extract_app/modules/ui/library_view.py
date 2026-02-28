@@ -44,6 +44,7 @@ class BookCard(ctk.CTkFrame):
         cover_path = book_data.get('cover_path', '')
         published_year = book_data.get('published_year', '')
         category = book_data.get('category', '')
+        added_date = book_data.get('added_date', '')
         
         # Fixed card size
         self.configure(width=220, height=360)
@@ -120,7 +121,16 @@ class BookCard(ctk.CTkFrame):
             )
             lbl_cat.pack(side="top", pady=(0, 2))
 
-        # 5. Delete Button (always at the very bottom)
+        # 5. Added date (relative time)
+        if added_date:
+            date_display = self._format_relative_date(added_date)
+            self.date_label = ctk.CTkLabel(
+                self, text=f"📅 {date_display}", font=Fonts.TINY,
+                text_color=Colors.TEXT_MUTED
+            )
+            self.date_label.pack(side="top", pady=(0, 2))
+
+        # 6. Delete Button (always at the very bottom)
         self.btn_delete = ctk.CTkButton(
             self, text="🗑 Xóa", width=60, height=24,
             fg_color="transparent", text_color=Colors.DANGER,
@@ -144,6 +154,26 @@ class BookCard(ctk.CTkFrame):
     def _handle_click_event(self, event=None):
         if self.on_click:
             self.on_click(self.item_id)
+
+    @staticmethod
+    def _format_relative_date(date_str: str) -> str:
+        """Format an ISO/SQLite timestamp into Vietnamese relative time."""
+        try:
+            # SQLite CURRENT_TIMESTAMP format: "YYYY-MM-DD HH:MM:SS"
+            dt = datetime.datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+            now = datetime.datetime.now(dt.tzinfo) if dt.tzinfo else datetime.datetime.now()
+            delta = now - dt
+            days = delta.days
+            if days == 0:
+                return "Hôm nay"
+            elif days == 1:
+                return "Hôm qua"
+            elif days < 30:
+                return f"{days} ngày trước"
+            else:
+                return dt.strftime("%d/%m/%Y")
+        except Exception:
+            return date_str[:10] if len(date_str) >= 10 else date_str
             
     def _handle_delete(self):
         if self.on_delete:
