@@ -13,6 +13,7 @@ falling back to per-page splitting.
 """
 
 import re
+import statistics
 import traceback
 from pathlib import Path
 from typing import List, Dict, Any
@@ -52,7 +53,15 @@ def _parse_toc_from_text(doc: fitz.Document) -> List:
     return toc
 
 
-# pylint: disable=too-many-locals, too-many-branches,from .toc_parser import parse_toc
+# pylint: disable=too-many-locals, too-many-branches
+
+# Chapters matching these patterns are extracted as a single flat article (no splitting).
+_SKIP_SPLIT_PATTERNS = [
+    'INDEX', 'GLOSSARY', 'REFERENCES', 'BIBLIOGRAPHY',
+    'CONTENTS', 'TABLE OF CONTENTS', 'APPENDIX', 'APPENDICES',
+    'ENDNOTES', 'FOOTNOTES', 'COPYRIGHT', 'COLOPHON',
+    'ABOUT THE AUTHOR', 'ACKNOWLEDGMENT', 'ABOUT THIS'
+]
 
 def _extract_flat_chapter(doc, start_page, end_page, chapter_title, temp_image_dir):
     """Extracts pages as a single flat article — no heading splitting.
@@ -89,7 +98,7 @@ def _extract_chapter_with_heuristics(doc, start_page, end_page, chapter_title, t
       AND the line text is short (< 120 chars, single-line).
     - When a heading is detected, flush the current article and start a new one.
     """
-    import statistics
+
     articles = []
     
     # Pass 1: Determine baseline (body) font size
@@ -283,13 +292,7 @@ def parse_pdf(filepath: str) -> Dict[str, Any]:
             # Extract text and images with semantic splitting if applicable
             sub_articles = []
             
-            # Skip splitting for utility/reference sections
-            _SKIP_SPLIT_PATTERNS = [
-                'INDEX', 'GLOSSARY', 'REFERENCES', 'BIBLIOGRAPHY',
-                'CONTENTS', 'TABLE OF CONTENTS', 'APPENDIX', 'APPENDICES',
-                'ENDNOTES', 'FOOTNOTES', 'COPYRIGHT', 'COLOPHON',
-                'ABOUT THE AUTHOR', 'ACKNOWLEDGMENT', 'ABOUT THIS'
-            ]
+            # Skip splitting for utility/reference sections (see module-level constant)
             title_upper = title.strip().upper()
             should_skip_split = any(title_upper.startswith(pat) for pat in _SKIP_SPLIT_PATTERNS)
             
