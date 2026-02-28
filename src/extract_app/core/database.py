@@ -357,13 +357,9 @@ class DatabaseManager:
                 """, (book_id, chap_title, chap_idx))
                 chapter_id = cursor.lastrowid
                 
-                # Save root node if it has content
-                if root_node.get('content'):
-                    self._save_node_batch(cursor, chapter_id, root_node, 0, None)
-                
-                # Save children
-                for art_idx, child in enumerate(root_node.get('children', [])):
-                    self._save_node_batch(cursor, chapter_id, child, art_idx + 1, None)
+                # Save the root node and all its children recursively
+                # _save_node_batch handles the full tree traversal
+                self._save_node_batch(cursor, chapter_id, root_node, 0, None)
             
             # 3. Commit everything at once
             conn.commit()
