@@ -119,7 +119,7 @@ def _extract_chapter_with_heuristics(doc, start_page, end_page, chapter_title, t
     #   - "clearly larger" (e.g. 21pt vs 15pt body) → always a heading
     #   - "slightly larger + bold" (e.g. 16pt bold vs 15pt body) → heading if bold
     major_threshold = baseline_size + 3.0   # e.g. 15 + 3 = 18
-    minor_threshold = baseline_size + 0.5   # e.g. 15 + 0.5 = 15.5
+    minor_threshold = baseline_size + 2.0   # e.g. 15 + 2.0 = 17.0
 
     if debug_logger:
         debug_logger.log(f"  [Heuristic] Baseline={baseline_size}pt, Major≥{major_threshold}pt, Minor≥{minor_threshold}pt+Bold")
@@ -165,8 +165,7 @@ def _extract_chapter_with_heuristics(doc, start_page, end_page, chapter_title, t
                         # But we only want to split on MAJOR headings (species names),
                         # not every bold sub-section like "TAXONOMY", "BEHAVIOR"
                         # So we require size to be significantly above baseline
-                        if span_size >= baseline_size + 2.0:
-                            is_heading = True
+                        is_heading = True
                     
                     if is_heading:
                         # Flush accumulated block lines first
