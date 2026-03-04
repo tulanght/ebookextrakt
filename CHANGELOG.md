@@ -5,6 +5,14 @@ Dự án này tuân theo [Keep a Changelog](https://keepachangelog.com/en/1.0.0/
 
 ---
 
+## [2.2.0] - 2026-03-04
+
+### 🧠 Phân tích PDF (PDF Semantic Splitting)
+-   **Nested Bookmarks**: Hỗ trợ chia bài viết dạng cây (hierarchical) dựa trên cấu trúc Bookmark lồng nhau của PDF.
+-   **Heuristic Splitting**: Tự động phân tách các chương quá dài không có tiểu mục bằng cách phân tích kích thước (font-size) và độ đậm (bold) của font chữ để nhận diện tiêu đề ẩn.
+-   **Giao diện Mục lục phân cấp**: Cập nhật Library View (`library_view.py`) để hiển thị cấu trúc thư mục cha/con, theo dõi tiến độ dịch chi tiết cho từng cấp bài viết (leaf articles).
+-   **Testing**: Bổ sung bộ Unit test tự động cho `pdf_parser.py` đảm bảo độ chính xác các logic phân cấp.
+
 ## [2.1.0] - 2026-02-27
 
 ### 🎨 Đại tu Giao diện — Dark Navy Theme (UI/UX Redesign)
