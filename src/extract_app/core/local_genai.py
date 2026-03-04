@@ -131,16 +131,39 @@ class LocalGenAI:
 class LocalTranslationService:
     """
     Service to handle translation using LocalGenAI.
+    Designed for TranslateGemma 12B with strict prompt engineering.
     """
     
+    # Strict system instruction matching Cloud quality standards
+    STRICT_SYSTEM_PROMPT = (
+        "Bạn là phần mềm dịch thuật tự động Anh-Việt.\n"
+        "NHIỆM VỤ DUY NHẤT: Dịch văn bản sang tiếng Việt.\n\n"
+        "QUY TẮC BẮT BUỘC:\n"
+        "1. CHỈ trả về bản dịch tiếng Việt. KHÔNG giải thích, KHÔNG ghi chú, KHÔNG bình luận.\n"
+        "2. KHÔNG viết câu mở đầu kiểu 'Dưới đây là bản dịch...'.\n"
+        "3. Giữ nguyên cấu trúc đoạn văn và xuống dòng.\n"
+        "4. Giữ nguyên Markdown formatting (##, **, -, v.v.) nếu có.\n"
+        "5. Giữ nguyên mọi placeholder __IMG_XXX__ — KHÔNG dịch, KHÔNG xóa.\n"
+        "6. Dịch sát nghĩa, tự nhiên, phù hợp ngữ cảnh sách non-fiction.\n\n"
+        "VÍ DỤ:\n"
+        "Input: The __IMG_001__ shows the **Red Panda** in its natural habitat.\n"
+        "Output: __IMG_001__ cho thấy **Gấu trúc đỏ** trong môi trường sống tự nhiên của nó."
+    )
+
     def __init__(self, model_path: str = ""):
         self.engine = LocalGenAI.get_instance()
         self.model_path = model_path
 
     def translate(self, text: str, 
-                  system_instruction: str = "Bạn là biên dịch viên chuyên nghiệp.",
+                  system_instruction: str = "",
                   glossary: str = "") -> Optional[str]:
+        """Translate text using local LLM with strict prompt rules.
         
+        Args:
+            text: Source text to translate.
+            system_instruction: Optional override for system prompt (used by StyleManager).
+            glossary: Optional glossary terms (format: 'term_en → term_vi').
+        """
         # Ensure model is active
         if not self.engine.model_loaded:
             if self.model_path:
@@ -148,9 +171,14 @@ class LocalTranslationService:
             else:
                 return "Error: Model path not configured."
         
-        full_instruction = f"{system_instruction}\n\nLưu ý từ vựng (Glossary):\n{glossary}" if glossary else system_instruction
-        
+        # Build instruction: use strict prompt as base, append style/glossary if provided
+        base_instruction = self.STRICT_SYSTEM_PROMPT
+        if system_instruction:
+            base_instruction += f"\n\nHƯỚNG DẪN BỔ SUNG:\n{system_instruction}"
+        if glossary:
+            base_instruction += f"\n\nTỪ VỰNG BẮT BUỘC (Glossary):\n{glossary}"
+
         return self.engine.generate_response(
-            system_instruction=full_instruction,
-            prompt=f"Hãy dịch văn bản sau sang tiếng Việt:\n\n{text}"
+            system_instruction=base_instruction,
+            prompt=text
         )

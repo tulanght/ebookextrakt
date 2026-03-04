@@ -230,7 +230,9 @@ class TranslationService:
             )
             
             if result:
-                return result, None
+                # Apply same post-processing as Cloud to clean AI artifacts
+                cleaned = self._clean_translation_output(result)
+                return cleaned, None
             else:
                 return None, "Local generation returned empty result."
         except Exception as e:
@@ -253,9 +255,9 @@ class TranslationService:
         else:
             chunk_size = chunk_size or self.settings.get("chunk_size", 3000)
         
-        # Local model typically needs smaller chunks
+        # Local model needs smaller chunks due to limited context window (8192 tokens)
         if engine == "local":
-            chunk_size = min(chunk_size, 2000) 
+            chunk_size = min(chunk_size, 1200) 
             
         # Protect Anchors
         protected_text, anchors_map = self._protect_anchors(text)
@@ -267,16 +269,32 @@ class TranslationService:
         if progress_callback:
             progress_callback(0, total, f"Engine: {engine.upper()} | Chunks: {total}")
             
+        # Context overlap size for local LLM coherence
+        LOCAL_OVERLAP_CHARS = 150
+        
         if engine == "local":
-            # Local must be sequential
+            # Local must be sequential — add overlap for coherence
             for i, chunk in enumerate(chunks):
                 if progress_callback:
                     progress_callback(i + 1, total, f"Dịch phần {i + 1}/{total} (Local)...")
                 
-                res, err = self._translate_local_chunk(chunk)
+                # Prepend tail of previous chunk as context hint
+                if i > 0 and len(chunks[i-1]) > LOCAL_OVERLAP_CHARS:
+                    overlap_context = chunks[i-1][-LOCAL_OVERLAP_CHARS:]
+                    chunk_with_context = f"[...]{overlap_context}\n\n---\n\n{chunk}"
+                else:
+                    chunk_with_context = chunk
+                
+                res, err = self._translate_local_chunk(chunk_with_context)
                 if err:
                     print(f"Error chunk {i}: {err}")
                     return None
+                
+                # Strip any overlap translation leakage (text before the --- separator)
+                if i > 0 and '---' in (res or ''):
+                    parts = res.split('---', 1)
+                    res = parts[1].strip() if len(parts) > 1 else res
+                
                 results[i] = res
         else:
             # Cloud can be parallel
