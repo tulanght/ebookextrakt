@@ -497,25 +497,41 @@ class BookDetailWindow(ctk.CTkToplevel):
                      font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
                      command=lambda a=article: self._open_dual_view(a)
                  ).pack(side="left", padx=2, pady=4)
+                 
+                 engine = self.settings_manager.get("translation_engine", "cloud")
+                 btn_state = "normal" if engine == "cloud" else "disabled"
+                 
                  # Website variant button
                  has_web = bool(article.get('website_text'))
                  web_fg = Colors.BG_CARD if has_web else "transparent"
                  ctk.CTkButton(
                      right_frame, text="🌐", width=32, height=26,
+                     state=btn_state,
                      fg_color=web_fg, border_width=1, border_color=Colors.PRIMARY,
                      text_color=Colors.PRIMARY, hover_color=Colors.BG_CARD_HOVER,
                      font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
                      command=lambda a=article: self._transform_article(a, 'website')
                  ).pack(side="left", padx=2, pady=4)
+                 
                  # Facebook variant button
                  has_fb = bool(article.get('facebook_text'))
                  fb_fg = Colors.BG_CARD if has_fb else "transparent"
                  ctk.CTkButton(
                      right_frame, text="📱", width=32, height=26,
+                     state=btn_state,
                      fg_color=fb_fg, border_width=1, border_color=Colors.WARNING,
                      text_color=Colors.WARNING, hover_color=Colors.BG_CARD_HOVER,
                      font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
                      command=lambda a=article: self._transform_article(a, 'facebook')
+                 ).pack(side="left", padx=2, pady=4)
+                 
+                 # Retranslate button
+                 ctk.CTkButton(
+                     right_frame, text="🔄 Dịch Lại", width=80, height=26,
+                     fg_color="transparent", border_width=1, border_color=Colors.WARNING,
+                     text_color=Colors.WARNING, hover_color=Colors.BG_CARD_HOVER,
+                     font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
+                     command=lambda a=article: self._translate_article(a, force_retranslate=True)
                  ).pack(side="left", padx=2, pady=4)
             else:
                  ctk.CTkButton(
@@ -531,14 +547,23 @@ class BookDetailWindow(ctk.CTkToplevel):
                 text_color=Colors.TEXT_MUTED, font=Fonts.TINY
             ).pack(side="left", padx=Spacing.MD, pady=2)
                      
-    def _translate_article(self, article):
+    def _translate_article(self, article, force_retranslate=False):
         """Handle translation trigger."""
         import threading
         
         # 1. Check API Key
-        if not self.translation_service.api_key:
+        engine = self.settings_manager.get("translation_engine", "cloud")
+        if engine == "cloud" and not self.translation_service.api_key:
              messagebox.showwarning("Thiếu API Key", "Vui lòng nhập API Key trong phần Cài đặt trước.")
              return
+
+        # Ask for confirmation
+        if force_retranslate:
+            if not messagebox.askyesno("Xác nhận", "Bài viết này đã có bản dịch. Bạn có chắc muốn DỊCH LẠI (bản cũ sẽ bị ghi đè)?"):
+                return
+        else:
+            if not messagebox.askyesno("Xác nhận", f"Bắt đầu dịch bài viết này bằng {engine.upper()} API?"):
+                return
 
         article_id = article['id']
         
