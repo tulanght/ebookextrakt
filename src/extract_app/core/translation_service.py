@@ -276,7 +276,7 @@ class TranslationService:
             progress_callback(0, total, f"Engine: {engine.upper()} | Chunks: {total}")
             
         # Context overlap size for local LLM coherence
-        LOCAL_OVERLAP_CHARS = 150
+        LOCAL_OVERLAP_CHARS = 400
         
         if engine == "local":
             # Local must be sequential — add overlap for coherence
@@ -287,7 +287,7 @@ class TranslationService:
                 # Prepend tail of previous chunk as context hint
                 if i > 0 and len(chunks[i-1]) > LOCAL_OVERLAP_CHARS:
                     overlap_context = chunks[i-1][-LOCAL_OVERLAP_CHARS:]
-                    chunk_with_context = f"[...]{overlap_context}\n\n---\n\n{chunk}"
+                    chunk_with_context = f"NGỮ CẢNH TỪ ĐOẠN TRƯỚC (KHÔNG DỊCH):\n[...]{overlap_context}\n\n---\n\nĐOẠN CẦN DỊCH:\n{chunk}"
                 else:
                     chunk_with_context = chunk
                 
@@ -300,6 +300,10 @@ class TranslationService:
                 if i > 0 and '---' in (res or ''):
                     parts = res.split('---', 1)
                     res = parts[1].strip() if len(parts) > 1 else res
+                
+                # Strip the explicit instruction line if the AI copied it
+                if "ĐOẠN CẦN DỊCH:" in (res or ''):
+                    res = res.split("ĐOẠN CẦN DỊCH:", 1)[-1].strip()
                 
                 results[i] = res
         else:
@@ -468,18 +472,19 @@ class TranslationService:
 
     def _restore_anchors(self, text: str, mapping: dict) -> str:
         """Restores placeholders back to original anchor tags."""
+        import re
         restored_text = text
         for placeholder, original in mapping.items():
-            # Support case where AI might have added spaces or punctuation
-            # Check strictly first
             if placeholder in restored_text:
                 restored_text = restored_text.replace(placeholder, original)
             else:
-                # Try relaxed matching (maybe AI removed underscores?)
-                # For now, simplistic. If missing, we might have lost an image.
-                # Let's try to handle common AI mutations:
-                # __ IMG _ 001 __
-                # IMG_001
-                pass
+                # Try relaxed matching for AI mutated placeholders
+                # Original placeholder: __IMG_001__
+                # Mutations to catch: _IMG_001_, IMG_001, __ IMG _ 001 __, etc.
+                if placeholder.startswith("__IMG_") and placeholder.endswith("__"):
+                    idx = placeholder[6:-2] # get the 001 part
+                    # Build regex to find variations
+                    pattern = r'_*\s*IMG\s*_*\s*' + idx + r'\s*_*'
+                    restored_text = re.sub(pattern, original, restored_text, flags=re.IGNORECASE)
                 
         return restored_text

@@ -153,6 +153,21 @@ class TestAnchorProtection(unittest.TestCase):
         self.assertEqual(protected, text)
         self.assertEqual(len(mapping), 0)
 
+    def test_restores_mutated_local_placeholders(self):
+        """Local AI often mutates __IMG_001__ into italics or drops underscores."""
+        mapping = {
+            "__IMG_000__": "[Image: first.jpg]",
+            "__IMG_001__": "[Image: second.png]",
+            "__IMG_002__": "[Image: third.webp]"
+        }
+        # Simulate local LLM corrupted output
+        corrupted = "Đây là _IMG_000_ và __ IMG_001 __ cũng như IMG_002."
+        restored = self.service._restore_anchors(corrupted, mapping)
+        
+        self.assertIn("[Image: first.jpg]", restored)
+        self.assertIn("[Image: second.png]", restored)
+        self.assertIn("[Image: third.webp]", restored)
+
 
 class TestOverlapLeakageStripping(unittest.TestCase):
     """Tests for the overlap context stripping logic used in local sequential translation."""
