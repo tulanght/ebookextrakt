@@ -105,19 +105,9 @@ class TestLocalPromptStrictness(unittest.TestCase):
         """STRICT_SYSTEM_PROMPT must contain critical rules."""
         from extract_app.core.local_genai import LocalTranslationService
         prompt = LocalTranslationService.STRICT_SYSTEM_PROMPT
-        self.assertIn("__IMG_XXX__", prompt)
+        self.assertIn("__IMG_000__", prompt)
         self.assertIn("KHÔNG giải thích", prompt)
         self.assertIn("Markdown", prompt)
-        self.assertIn("KHÔNG dịch", prompt)
-
-    def test_strict_prompt_contains_fewshot(self):
-        """STRICT_SYSTEM_PROMPT must contain a few-shot example."""
-        from extract_app.core.local_genai import LocalTranslationService
-        prompt = LocalTranslationService.STRICT_SYSTEM_PROMPT
-        self.assertIn("VÍ DỤ:", prompt)
-        self.assertIn("Input:", prompt)
-        self.assertIn("Output:", prompt)
-        self.assertIn("__IMG_001__", prompt)
 
 
 class TestAnchorProtection(unittest.TestCase):

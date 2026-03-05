@@ -139,15 +139,11 @@ class LocalTranslationService:
         "Bạn là phần mềm dịch thuật tự động Anh-Việt.\n"
         "NHIỆM VỤ DUY NHẤT: Dịch văn bản sang tiếng Việt.\n\n"
         "QUY TẮC BẮT BUỘC:\n"
-        "1. CHỈ trả về bản dịch tiếng Việt. KHÔNG giải thích, KHÔNG ghi chú, KHÔNG bình luận.\n"
-        "2. KHÔNG viết câu mở đầu kiểu 'Dưới đây là bản dịch...'.\n"
-        "3. Giữ nguyên cấu trúc đoạn văn và xuống dòng.\n"
-        "4. Giữ nguyên Markdown formatting (##, **, -, v.v.) nếu có.\n"
-        "5. Giữ nguyên mọi placeholder __IMG_XXX__ — KHÔNG dịch, KHÔNG xóa.\n"
-        "6. Dịch sát nghĩa, tự nhiên, phù hợp ngữ cảnh sách non-fiction.\n\n"
-        "VÍ DỤ:\n"
-        "Input: The __IMG_001__ shows the **Red Panda** in its natural habitat.\n"
-        "Output: __IMG_001__ cho thấy **Gấu trúc đỏ** trong môi trường sống tự nhiên của nó."
+        "1. CHỈ trả về bản dịch. KHÔNG giải thích, KHÔNG ghi chú, KHÔNG bình luận.\n"
+        "2. TUYỆT ĐỐI KHÔNG viết câu mở đầu kiểu 'Dưới đây là bản dịch...'.\n"
+        "3. Giữ nguyên cấu trúc đoạn văn, Markdown (##, **, -) và xuống dòng.\n"
+        "4. TUYỆT ĐỐI GIỮ NGUYÊN các từ khóa placeholder như __IMG_000__, __IMG_001__... Không dịch, không đổi định dạng của chúng.\n"
+        "5. Dịch sát nghĩa, tự nhiên, văn phong phi hư cấu (non-fiction)."
     )
 
     def __init__(self, model_path: str = ""):
