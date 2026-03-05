@@ -8,6 +8,7 @@
 
 import json
 import os
+import copy
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -26,7 +27,7 @@ class GlossaryManager:
 
     def __init__(self, data_path: str = "user_data/glossary.json"):
         self.data_path = Path(data_path)
-        self.data: Dict = self.DEFAULT_DATA.copy()
+        self.data: Dict = copy.deepcopy(self.DEFAULT_DATA)  # Deep copy avoids shared state
         self._load_data()
 
     def _load_data(self):
