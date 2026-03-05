@@ -31,6 +31,8 @@ Output/
 *.txt
 *.log
 
+# Backup files
+*.bak
 
 # Large Samples & Debug
 test_samples/
@@ -40,6 +42,7 @@ verify_*.py
 temp_*.py
 scripts/test_*.py
 scripts/verify_*.py
+*.patch
 
 # User Data (Database, Settings, Sensitive Info)
 user_data/
@@ -52,3 +55,10 @@ docs/ai/
 AGENTS.md
 WORKFLOW.md
 .gemini/
+
+# Security: Never commit these
+*.key
+*.pem
+*.env
+*.secret
+*.gguf
