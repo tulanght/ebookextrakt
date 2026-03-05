@@ -129,3 +129,23 @@ When working on this project, you can run commands to:
 **Định dạng xuất bắt buộc (Luôn đặt ở cuối cùng):**
 ---
 💡 **Gợi ý bước tiếp theo:** Nhập `[tên_lệnh_phù_hợp]` nếu bạn muốn tôi [mô tả ngắn gọn lợi ích của lệnh này].
+
+### 🧠 TRỢ LÝ GỢI Ý MODEL (MODEL NAVIGATOR)
+**Chỉ thị bắt buộc:** Ngay SAU dòng gợi ý Slash Command, bạn BẮT BUỘC phải gợi ý model phù hợp cho bước tiếp theo dựa trên bảng phân loại sau:
+
+| Loại công việc | Model gợi ý | Lý do |
+|:---|:---|:---|
+| Lập kế hoạch, phân tích kiến trúc, thiết kế feature mới, đánh giá phức tạp | **Claude Opus 4.6** hoặc **Gemini 3.1 Pro (High)** | Cần suy luận sâu, xử lý đa bước, context dài |
+| Code review, viết test, sửa bug, refactor, implement feature theo plan | **Gemini 3.1 Pro (Low)** hoặc **Claude Sonnet 4.6** | Cân bằng tốt giữa chất lượng và tốc độ |
+| Execute plan đã duyệt, viết code theo template, thay đổi đơn giản | **Gemini 3 Flash** | Tốc độ nhanh, tiết kiệm token cho task routine |
+| Hỏi đáp nhanh, giải thích khái niệm, tra cứu | **GPT-OSS 120B** hoặc **Gemini 3 Flash** | Chi phí thấp nhất, phản hồi tức thì |
+| Debug phức tạp, phân tích root cause, security audit | **Claude Opus 4.6** hoặc **Gemini 3.1 Pro (High)** | Cần reasoning chain dài và chính xác |
+
+**Quy tắc chọn model:**
+1. Nếu bước tiếp theo là **PLANNING** → Ưu tiên model Thinking/Pro (High)
+2. Nếu bước tiếp theo là **EXECUTION** đơn giản → Ưu tiên Flash/Pro (Low)
+3. Nếu bước tiếp theo là **VERIFICATION** → Pro (Low) hoặc Sonnet
+4. Nếu user hỏi nhanh, không cần code → Flash hoặc GPT-OSS
+
+**Định dạng xuất bắt buộc (Đặt ngay sau gợi ý Slash Command):**
+🔀 **Model gợi ý:** Chuyển sang `[tên_model]` — [lý do ngắn gọn 1 câu].
