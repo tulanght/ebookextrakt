@@ -14,6 +14,7 @@ from typing import Optional, List, Callable, Tuple
 
 from .local_genai import LocalTranslationService
 from .style_manager import StyleManager
+from .glossary_manager import GlossaryManager
 
 class TranslationService:
     """
@@ -28,6 +29,7 @@ class TranslationService:
     def __init__(self, settings_manager):
         self.settings = settings_manager
         self.style_manager = StyleManager()
+        self.glossary_manager = GlossaryManager()
         
         # Cloud Setup
         self.api_key = self.settings.get_api_key()
@@ -117,6 +119,9 @@ class TranslationService:
         if not self.api_key or not self.cloud_model:
             return None, "API Key chưa được cấu hình"
 
+        glossary_str = self.glossary_manager.get_active_glossary_string()
+        glossary_prompt = f"7. TỪ VỰNG BẮT BUỘC:\n{glossary_str}\n" if glossary_str else ""
+
         prompt = (
             "<SYSTEM>\n"
             "Bạn là một phần mềm dịch thuật tự động Anh-Việt.\n"
@@ -128,6 +133,7 @@ class TranslationService:
             "4. Giữ nguyên Markdown formatting (##, **, -, v.v.) nếu có.\n"
             "5. Giữ nguyên mọi placeholder __IMG_XXX__ — KHÔNG dịch, KHÔNG xóa chúng.\n"
             "6. Dịch sát nghĩa, tự nhiên, phù hợp ngữ cảnh sách non-fiction.\n"
+            f"{glossary_prompt}"
             "</SYSTEM>\n\n"
             f"{text}"
         )
@@ -216,8 +222,8 @@ class TranslationService:
         except:
              instruction = "Bạn là biên dịch viên chuyên nghiệp. Hãy dịch văn bản sau sang tiếng Việt."
              
-        # Optional: Glossary support
-        glossary = "" # Placeholder for future glossary manager integration
+        # Inject Glossary support
+        glossary = self.glossary_manager.get_active_glossary_string()
         
         try:
             # We call the engine directly now or via wrapper? 

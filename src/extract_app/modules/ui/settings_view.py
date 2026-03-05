@@ -45,9 +45,11 @@ class SettingsView(ctk.CTkFrame):
         self.tabview.pack(padx=Spacing.XL, pady=(0, Spacing.XL), fill="both", expand=True)
         
         self.tabview.add("Dịch thuật & AI")
+        self.tabview.add("Từ Vựng (Glossary)")
         self.tabview.add("Giao diện & Hệ thống")
         
         self._build_translation_tab(self.tabview.tab("Dịch thuật & AI"))
+        self._build_glossary_tab(self.tabview.tab("Từ Vựng (Glossary)"))
         self._build_system_tab(self.tabview.tab("Giao diện & Hệ thống"))
         
         self.tabview.set("Dịch thuật & AI")
@@ -237,6 +239,11 @@ class SettingsView(ctk.CTkFrame):
         
         # Initial State
         self._update_ui_state()
+
+    def _build_glossary_tab(self, parent):
+        from .glossary_tab import GlossaryTab
+        tab = GlossaryTab(parent, self.translation_service.glossary_manager)
+        tab.pack(fill="both", expand=True, padx=Spacing.SM, pady=Spacing.SM)
 
     def _build_system_tab(self, parent):
         """Placeholder for system settings."""

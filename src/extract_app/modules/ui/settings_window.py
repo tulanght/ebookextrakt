@@ -60,9 +60,11 @@ class SettingsWindow(ctk.CTkToplevel):
         self.tabview.pack(padx=Spacing.XL, pady=Spacing.XL, fill="both", expand=True)
         
         self.tabview.add("Dịch thuật & AI")
+        self.tabview.add("Từ Vựng (Glossary)")
         self.tabview.add("Giao diện")
         
         self._build_translation_tab(self.tabview.tab("Dịch thuật & AI"))
+        self._build_glossary_tab(self.tabview.tab("Từ Vựng (Glossary)"))
         self._build_appearance_tab(self.tabview.tab("Giao diện"))
         
         self.tabview.set("Dịch thuật & AI")
@@ -248,6 +250,11 @@ class SettingsWindow(ctk.CTkToplevel):
         
         # Initial State
         self._update_ui_state()
+
+    def _build_glossary_tab(self, parent):
+        from .glossary_tab import GlossaryTab
+        tab = GlossaryTab(parent, self.translation_service.glossary_manager)
+        tab.pack(fill="both", expand=True, padx=Spacing.SM, pady=Spacing.SM)
 
     def _build_appearance_tab(self, parent):
         ctk.CTkLabel(parent, text="Giao diện (Coming soon)", text_color=Colors.TEXT_MUTED, font=Fonts.BODY).pack(pady=Spacing.LG)
