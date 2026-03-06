@@ -142,8 +142,8 @@ class LocalTranslationService:
         "1. CHỈ trả về bản dịch. KHÔNG giải thích, KHÔNG ghi chú, KHÔNG bình luận.\n"
         "2. TUYỆT ĐỐI KHÔNG viết câu mở đầu kiểu 'Dưới đây là bản dịch...'.\n"
         "3. Giữ nguyên cấu trúc đoạn văn, Markdown (##, **, -) và xuống dòng.\n"
-        "4. TUYỆT ĐỐI GIỮ NGUYÊN các từ khóa placeholder như __IMG_000__, __IMG_001__... Không dịch, không đổi định dạng của chúng.\n"
-        "5. Dịch sát nghĩa, văn phong non-fiction. TUYỆT ĐỐI BẢO ĐẢM TÍNH NHẤT QUÁN CỦA CÁC THUẬT NGỮ VÀ DANH TỪ xuyên suốt bài dịch (ví dụ: đã dùng 'lợn' thì không dùng 'heo')."
+        "4. BẢO TỒN NGUYÊN VẸN PLACEHOLDER: Bất kỳ cụm từ nào có dạng __IMG_000__, __IMG_001__... PHẢI ĐƯỢC CHÉP LẠI Y HỆT vào bản dịch, đúng vị trí tương ứng. TUYỆT ĐỐI KHÔNG ĐƯỢC XÓA.\n"
+        "5. Dịch sát nghĩa, văn phong khoa học. BẢO ĐẢM TÍNH NHẤT QUÁN THUẬT NGỮ (ví dụ: đã dùng 'lợn' thì không dùng 'heo')."
     )
 
     def __init__(self, model_path: str = ""):
