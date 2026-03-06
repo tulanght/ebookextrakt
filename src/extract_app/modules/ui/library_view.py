@@ -331,6 +331,14 @@ class BookDetailWindow(ctk.CTkToplevel):
         )
         self.btn_webview.pack(side="left")
         
+        self.btn_ai_glossary = ctk.CTkButton(
+            self.tools_frame, text="🪄 AI Tạo Từ Vựng", 
+            font=Fonts.BODY_BOLD, fg_color="transparent", border_width=1, border_color=Colors.WARNING,
+            text_color=Colors.WARNING, hover_color=Colors.BG_CARD_HOVER, corner_radius=Spacing.BUTTON_RADIUS,
+            command=self._open_ai_glossary_modal
+        )
+        self.btn_ai_glossary.pack(side="left", padx=Spacing.MD)
+        
         # Scrollable List of Content
         self.list_frame = ctk.CTkScrollableFrame(
             self, fg_color=Colors.BG_CARD, corner_radius=Spacing.CARD_RADIUS,
@@ -547,6 +555,147 @@ class BookDetailWindow(ctk.CTkToplevel):
                 text_color=Colors.TEXT_MUTED, font=Fonts.TINY
             ).pack(side="left", padx=Spacing.MD, pady=2)
                      
+    def _open_ai_glossary_modal(self):
+        """Opens a modal to configure and trigger AI Glossary extraction."""
+        if not self.translation_service.api_key:
+             messagebox.showwarning("Thiếu API Key", "Vui lòng nhập Cloud API Key (Gemini) trong phần Cài đặt trước.", parent=self)
+             return
+
+        # Fetch existing categories from GlossaryManager
+        categories = self.translation_service.glossary_manager.get_categories()
+        
+        modal = ctk.CTkToplevel(self)
+        modal.title("🪄 Tự động trích xuất Từ Vựng bằng AI")
+        modal.geometry("450x320")
+        modal.transient(self)
+        modal.grab_set()
+        modal.config(bg=Colors.BG_APP)
+        
+        ctk.CTkLabel(
+            modal, text="AI (Gemini) sẽ đọc một phần nội dung sách để tự động tìm và\ntạo danh sách 30-50 từ khóa/thuật ngữ quan trọng nhất.",
+            font=Fonts.BODY, text_color=Colors.TEXT_MUTED, justify="left"
+        ).pack(pady=(20, 10), padx=20, fill="x")
+        
+        # Form frame
+        form = ctk.CTkFrame(modal, fg_color="transparent")
+        form.pack(fill="x", padx=20, pady=10)
+        
+        # Subject Input
+        ctk.CTkLabel(form, text="Chủ đề sách (Để AI dịch chuẩn ngữ cảnh):", font=Fonts.BODY_BOLD, text_color=Colors.TEXT_PRIMARY).grid(row=0, column=0, sticky="w", pady=5)
+        entry_subject = ctk.CTkEntry(form, width=300, fg_color=Colors.BG_INPUT, border_color=Colors.BORDER)
+        entry_subject.insert(0, self.title()[:30] + "...") # Default suggestion
+        entry_subject.grid(row=1, column=0, sticky="ew", pady=(0, 15))
+        
+        # Category Combobox (Target)
+        ctk.CTkLabel(form, text="Lưu vào danh mục từ vựng:", font=Fonts.BODY_BOLD, text_color=Colors.TEXT_PRIMARY).grid(row=2, column=0, sticky="w", pady=5)
+        
+        combo_category = ctk.CTkComboBox(
+            form, width=300, values=categories if categories else ["Sách mới"],
+            fg_color=Colors.BG_INPUT, border_color=Colors.BORDER, button_color=Colors.PRIMARY
+        )
+        if categories:
+            # Suggest current active or first
+            active = self.translation_service.glossary_manager.active_category
+            combo_category.set(active if active else categories[0])
+        else:
+            combo_category.set("Sách mới")
+        combo_category.grid(row=3, column=0, sticky="ew", pady=(0, 20))
+        
+        # Action Buttons
+        btn_frame = ctk.CTkFrame(modal, fg_color="transparent")
+        btn_frame.pack(fill="x", padx=20, pady=10)
+        
+        def on_start():
+            subject = entry_subject.get().strip()
+            target_cat = combo_category.get().strip()
+            if not subject or not target_cat:
+                messagebox.showwarning("Thiếu thông tin", "Vui lòng điền đủ Chủ đề và Danh mục.", parent=modal)
+                return
+            modal.destroy()
+            self._start_ai_glossary_extraction(subject, target_cat)
+            
+        ctk.CTkButton(
+            btn_frame, text="Bắt đầu Trích xuất 🚀", width=140, height=32,
+            fg_color=Colors.PRIMARY, text_color=Colors.TEXT_PRIMARY,
+            command=on_start
+        ).pack(side="right")
+        
+        ctk.CTkButton(
+            btn_frame, text="Hủy", width=80, height=32,
+            fg_color="transparent", border_color=Colors.BORDER, border_width=1, text_color=Colors.TEXT_MUTED,
+            command=modal.destroy
+        ).pack(side="right", padx=10)
+
+    def _start_ai_glossary_extraction(self, subject: str, target_category: str):
+        """Samples text and sends to translation service in background."""
+        import threading
+        
+        # 1. Sample ~15,000 characters from the book's articles
+        sample_text = ""
+        for chapter in self.chapters:
+            for article in chapter.get('articles', []):
+                content = self.db_manager.get_article_content(article['id'])
+                if content:
+                    sample_text += content + "\n\n"
+                if len(sample_text) > 15000:
+                    break
+            if len(sample_text) > 15000:
+                break
+                
+        if len(sample_text) < 500:
+            messagebox.showwarning("Cảnh báo", "Sách này quá ngắn hoặc chưa có chữ để trích xuất.", parent=self)
+            return
+            
+        # 2. Setup Loading UI
+        self.loading_win = ctk.CTkToplevel(self)
+        self.loading_win.title("🪄 AI đang tạo Từ Vựng...")
+        self.loading_win.geometry("380x130")
+        self.loading_win.transient(self)
+        self.loading_win.grab_set()
+        
+        ctk.CTkLabel(self.loading_win, text=f"Thu thập mẫu {len(sample_text[:15000]):,} ký tự... Đang phân tích...", font=("Segoe UI", 12)).pack(pady=(20, 5))
+        self.progress_bar = ctk.CTkProgressBar(self.loading_win, mode="indeterminate", width=250)
+        self.progress_bar.pack(pady=10)
+        self.progress_bar.start()
+        
+        # 3. Worker task
+        def worker():
+            terms, err = self.translation_service.extract_glossary_from_text(sample_text, subject)
+            self.after(0, lambda: self._on_glossary_extraction_complete(terms, err, target_category))
+            
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_glossary_extraction_complete(self, terms: list, error: str, target_category: str):
+        """Callback to save extracted terms."""
+        if hasattr(self, 'loading_win') and self.loading_win.winfo_exists():
+            self.loading_win.destroy()
+            
+        if error or not terms:
+            messagebox.showerror("Lỗi Trích xuất", error or "Không có từ vựng nào được trích xuất.", parent=self)
+            return
+            
+        # Import to GlossaryManager
+        added_count = 0
+        gm = self.translation_service.glossary_manager
+        
+        # Create category if missing
+        if target_category not in gm.get_categories():
+            gm.create_category(target_category)
+            
+        for term_obj in terms:
+            en = term_obj.get('en', '').strip()
+            vi = term_obj.get('vi', '').strip()
+            if en and vi:
+                 success, msg = gm.add_term(target_category, en, vi)
+                 if success:
+                     added_count += 1
+                     
+        messagebox.showinfo(
+            "Hoàn tất 🪄", 
+            f"Đã phân tích xong!\n\nLưu thành công {added_count}/{len(terms)} từ vựng vào danh mục '{target_category}'.\n(Các từ trùng/lỗi cấu trúc bị bỏ qua).\n\n💡 Vui lòng vào Cài đặt -> Từ Vựng để xem và tinh chỉnh lại.", 
+            parent=self
+        )
+
     def _translate_article(self, article, force_retranslate=False):
         """Handle translation trigger."""
         import threading

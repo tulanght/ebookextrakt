@@ -138,6 +138,58 @@ class TranslationService:
             f"{text}"
         )
 
+    def extract_glossary_from_text(self, text: str, subject: str = "tổng hợp") -> Tuple[Optional[List[dict]], Optional[str]]:
+        """
+        Uses Cloud LLM (Gemini) to extract key domain-specific terms from a sample text
+        and return them as a JSON array of dicts: [{"en": "term", "vi": "translation"}].
+        """
+        if not self.api_key or not self.cloud_model:
+            return None, "Vui lòng cấu hình Cloud API Key (Gemini) trong Cài đặt để sử dụng tính năng này."
+
+        prompt = (
+            f"Bạn là một chuyên gia ngôn ngữ học và dịch giả chuyên ngành [{subject}].\n"
+            "Nhiệm vụ của bạn là đọc đoạn văn bản tiếng Anh dưới đây và trích xuất ra danh sách "
+            "các thuật ngữ chuyên ngành, danh từ riêng hoặc các từ khóa quan trọng nhất, "
+            "sau đó đưa ra bản dịch tiếng Việt chuẩn xác nhất cho ngữ cảnh đó.\n\n"
+            "YÊU CẦU BẮT BUỘC:\n"
+            "1. Chỉ trích xuất tối đa 30-50 từ vựng quan trọng nhất.\n"
+            "2. Trả về KẾT QUẢ DUY NHẤT LÀ MỘT MẢNG JSON HỢP LỆ, không có Markdown backticks (```json), không giải thích thêm.\n"
+            "3. Format JSON yêu cầu:\n"
+            '[\n  {"en": "từ tiếng anh gốc", "vi": "bản dịch tiếng việt"}\n]\n\n'
+            "VĂN BẢN GỐC:\n"
+            f"{text[:15000]}" # Limit to 15k chars to save tokens and prevent huge JSONs
+        )
+
+        try:
+            # We enforce JSON output directly via generation_config if supported, or via prompt
+            response = self.cloud_model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.1, # Low temp for deterministic extraction
+                )
+            )
+            raw_text = response.text.strip()
+            
+            # Clean potential markdown backticks
+            if raw_text.startswith("```json"):
+                raw_text = raw_text[7:]
+            if raw_text.startswith("```"):
+                raw_text = raw_text[3:]
+            if raw_text.endswith("```"):
+                raw_text = raw_text[:-3]
+            
+            import json
+            terms = json.loads(raw_text.strip())
+            if isinstance(terms, list):
+                return terms, None
+            else:
+                return None, "Gemini không trả về định dạng mảng JSON hợp lệ."
+                
+        except json.JSONDecodeError as e:
+            return None, f"Lỗi parse JSON từ AI: {e}\nRaw output: {raw_text[:100]}..."
+        except Exception as e:
+            return None, f"Lỗi kết nối Gemini: {e}"
+
         generation_config = genai.GenerationConfig(
             temperature=0.3,
             top_p=0.9,
