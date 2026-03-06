@@ -680,14 +680,16 @@ class BookDetailWindow(ctk.CTkToplevel):
         
         # Create category if missing
         if target_category not in gm.get_categories():
-            gm.create_category(target_category)
+            gm.add_category(target_category)
             
         for term_obj in terms:
             en = term_obj.get('en', '').strip()
             vi = term_obj.get('vi', '').strip()
             if en and vi:
-                 success, msg = gm.add_term(target_category, en, vi)
-                 if success:
+                 # Check if term already exists to count correctly
+                 existing = gm.data.get("categories", {}).get(target_category, {})
+                 if en not in existing:
+                     gm.add_term(en, vi, target_category)
                      added_count += 1
                      
         messagebox.showinfo(
