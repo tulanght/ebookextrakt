@@ -566,7 +566,7 @@ class BookDetailWindow(ctk.CTkToplevel):
         
         modal = ctk.CTkToplevel(self)
         modal.title("🪄 Tự động trích xuất Từ Vựng bằng AI")
-        modal.geometry("450x320")
+        modal.geometry("480x380")
         modal.transient(self)
         modal.grab_set()
         modal.config(bg=Colors.BG_APP)
