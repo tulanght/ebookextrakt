@@ -595,7 +595,7 @@ class BookDetailWindow(ctk.CTkToplevel):
         )
         if categories:
             # Suggest current active or first
-            active = self.translation_service.glossary_manager.active_category
+            active = self.translation_service.glossary_manager.get_active_category()
             combo_category.set(active if active else categories[0])
         else:
             combo_category.set("Sách mới")
