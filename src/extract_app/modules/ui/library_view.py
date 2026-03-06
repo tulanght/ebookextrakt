@@ -554,15 +554,15 @@ class BookDetailWindow(ctk.CTkToplevel):
         # 1. Check API Key
         engine = self.settings_manager.get("translation_engine", "cloud")
         if engine == "cloud" and not self.translation_service.api_key:
-             messagebox.showwarning("Thiếu API Key", "Vui lòng nhập API Key trong phần Cài đặt trước.")
+             messagebox.showwarning("Thiếu API Key", "Vui lòng nhập API Key trong phần Cài đặt trước.", parent=self)
              return
 
         # Ask for confirmation
         if force_retranslate:
-            if not messagebox.askyesno("Xác nhận", "Bài viết này đã có bản dịch. Bạn có chắc muốn DỊCH LẠI (bản cũ sẽ bị ghi đè)?"):
+            if not messagebox.askyesno("Xác nhận", "Bài viết này đã có bản dịch. Bạn có chắc muốn DỊCH LẠI (bản cũ sẽ bị ghi đè)?", parent=self):
                 return
         else:
-            if not messagebox.askyesno("Xác nhận", f"Bắt đầu dịch bài viết này bằng {engine.upper()} API?"):
+            if not messagebox.askyesno("Xác nhận", f"Bắt đầu dịch bài viết này bằng {engine.upper()} API?", parent=self):
                 return
 
         article_id = article['id']
@@ -627,11 +627,11 @@ class BookDetailWindow(ctk.CTkToplevel):
         if translation:
             # Save to database
             self.db_manager.update_article_translation(article_id, translation, 'translated')
-            messagebox.showinfo("Thành công", "Dịch thành công! Bản dịch đã được lưu.")
+            messagebox.showinfo("Thành công", "Dịch thành công! Bản dịch đã được lưu.", parent=self)
             # Refresh the content list to show updated status
             self._render_content()
         else:
-            messagebox.showerror("Lỗi", "Dịch thất bại. Vui lòng kiểm tra API Key và thử lại.")
+            messagebox.showerror("Lỗi", "Dịch thất bại. Vui lòng kiểm tra API Key và thử lại.", parent=self)
 
     def _transform_article(self, article, variant_type: str):
         """Handle variant transformation (website/facebook) from archive text."""
@@ -681,10 +681,10 @@ class BookDetailWindow(ctk.CTkToplevel):
         
         if result:
             self.db_manager.update_article_variant(article_id, variant_type, result)
-            messagebox.showinfo("Thành công", f"Bản {label} đã được tạo và lưu!")
+            messagebox.showinfo("Thành công", f"Bản {label} đã được tạo và lưu!", parent=self)
             self._render_content()
         else:
-            messagebox.showerror("Lỗi", f"Chuyển thể {label} thất bại: {error}")
+            messagebox.showerror("Lỗi", f"Chuyển thể {label} thất bại: {error}", parent=self)
         
     def _open_dual_view(self, article):
          """Opens the Dual View Editor."""

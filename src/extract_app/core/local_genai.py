@@ -143,7 +143,7 @@ class LocalTranslationService:
         "2. TUYỆT ĐỐI KHÔNG viết câu mở đầu kiểu 'Dưới đây là bản dịch...'.\n"
         "3. Giữ nguyên cấu trúc đoạn văn, Markdown (##, **, -) và xuống dòng.\n"
         "4. TUYỆT ĐỐI GIỮ NGUYÊN các từ khóa placeholder như __IMG_000__, __IMG_001__... Không dịch, không đổi định dạng của chúng.\n"
-        "5. Dịch sát nghĩa, tự nhiên, văn phong phi hư cấu (non-fiction)."
+        "5. Dịch sát nghĩa, văn phong non-fiction. TUYỆT ĐỐI BẢO ĐẢM TÍNH NHẤT QUÁN CỦA CÁC THUẬT NGỮ VÀ DANH TỪ xuyên suốt bài dịch (ví dụ: đã dùng 'lợn' thì không dùng 'heo')."
     )
 
     def __init__(self, model_path: str = ""):
