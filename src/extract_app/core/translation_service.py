@@ -313,9 +313,10 @@ class TranslationService:
         else:
             chunk_size = chunk_size or self.settings.get("chunk_size", 3000)
         
-        # Local model needs smaller chunks due to limited context window (8192 tokens)
+        # Local model needs slightly larger chunks to avoid cutting mid-sentence.
+        # TranslateGemma 12B has 8192 token context; 1500 chars ~ 500 tokens source + 800 tokens output.
         if engine == "local":
-            chunk_size = min(chunk_size, 1200) 
+            chunk_size = min(chunk_size, 1500) 
             
         # Protect Anchors
         protected_text, anchors_map = self._protect_anchors(text)
@@ -326,36 +327,18 @@ class TranslationService:
         
         if progress_callback:
             progress_callback(0, total, f"Engine: {engine.upper()} | Chunks: {total}")
-            
-        # Context overlap size for local LLM coherence
-        LOCAL_OVERLAP_CHARS = 400
         
         if engine == "local":
-            # Local must be sequential — add overlap for coherence
+            # Local must be sequential — send each chunk cleanly, no overlap context
+            # (TranslateGemma 12B cannot reliably follow 'translate only this part' instructions)
             for i, chunk in enumerate(chunks):
                 if progress_callback:
                     progress_callback(i + 1, total, f"Dịch phần {i + 1}/{total} (Local)...")
                 
-                # Prepend tail of previous chunk as context hint
-                if i > 0 and len(chunks[i-1]) > LOCAL_OVERLAP_CHARS:
-                    overlap_context = chunks[i-1][-LOCAL_OVERLAP_CHARS:]
-                    chunk_with_context = f"NGỮ CẢNH TỪ ĐOẠN TRƯỚC (KHÔNG DỊCH):\n[...]{overlap_context}\n\n---\n\nĐOẠN CẦN DỊCH:\n{chunk}"
-                else:
-                    chunk_with_context = chunk
-                
-                res, err = self._translate_local_chunk(chunk_with_context)
+                res, err = self._translate_local_chunk(chunk)
                 if err:
-                    print(f"Error chunk {i}: {err}")
+                    print(f"[Local] Error chunk {i}: {err}")
                     return None
-                
-                # Strip any overlap translation leakage (text before the --- separator)
-                if i > 0 and '---' in (res or ''):
-                    parts = res.split('---', 1)
-                    res = parts[1].strip() if len(parts) > 1 else res
-                
-                # Strip the explicit instruction line if the AI copied it
-                if "ĐOẠN CẦN DỊCH:" in (res or ''):
-                    res = res.split("ĐOẠN CẦN DỊCH:", 1)[-1].strip()
                 
                 results[i] = res
         else:

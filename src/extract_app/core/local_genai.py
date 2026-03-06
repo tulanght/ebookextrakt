@@ -101,7 +101,7 @@ class LocalGenAI:
     def generate_response(self, 
                           system_instruction: str, 
                           prompt: str, 
-                          max_tokens: int = 3072,
+                          max_tokens: int = 4096,
                           temperature: float = 0.3,
                           stop: List[str] = None) -> Optional[str]:
         """
