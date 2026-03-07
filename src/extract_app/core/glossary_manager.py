@@ -111,6 +111,30 @@ class GlossaryManager:
         self.data["categories"][cat][en_term.strip()] = vi_term.strip()
         self._save_data()
 
+    def bulk_add_terms(self, terms_dict: Dict[str, str], category: str = None) -> int:
+        """Add multiple terms efficiently with a single disk write. Returns number of new terms added."""
+        if not terms_dict:
+            return 0
+            
+        cat = category or self.get_active_category()
+        if cat not in self.data["categories"]:
+            self.data["categories"][cat] = {}
+            
+        added_count = 0
+        existing_terms = self.data["categories"][cat]
+        
+        for en, vi in terms_dict.items():
+            en_clean = en.strip()
+            vi_clean = vi.strip()
+            if en_clean and vi_clean and en_clean not in existing_terms:
+                existing_terms[en_clean] = vi_clean
+                added_count += 1
+                
+        if added_count > 0:
+            self._save_data()
+            
+        return added_count
+
     def delete_term(self, en_term: str, category: str = None):
         """Remove a term from the specified category."""
         cat = category or self.get_active_category()
