@@ -20,6 +20,8 @@ import datetime
 from .theme import Colors, Fonts, Spacing
 from .editor_view import DualViewEditor
 from .tooltip import ToolTip
+from ...core.eta_calculator import calculate_book_eta
+from ...core.queue_manager import ChapterQueueManager, ChapterQueueItem, QueueStatus
 
 class BookCard(ctk.CTkFrame):
     """
@@ -305,6 +307,16 @@ class BookDetailWindow(ctk.CTkToplevel):
         self.book_id = book_details.get('id')
         self.chapters = book_details.get('chapters', [])
         
+        # Chapter Queue Manager (one per open book window)
+        self.queue_manager = ChapterQueueManager(
+            translation_service=translation_service,
+            db_manager=db_manager,
+            settings_manager=settings_manager,
+            on_item_done=lambda art_id, ok: self.after(0, lambda: self._on_queue_item_done(art_id, ok)),
+            on_queue_done=lambda: self.after(0, self._on_queue_done),
+            on_status_change=lambda s: self.after(0, lambda: self._on_queue_status_change(s)),
+        )
+        
         # UI
         # Header
         lbl_title = ctk.CTkLabel(
@@ -339,6 +351,59 @@ class BookDetailWindow(ctk.CTkToplevel):
         )
         self.btn_ai_glossary.pack(side="left", padx=Spacing.MD)
         
+        # ETA Label — estimated time to translate remaining chapters
+        wpm = settings_manager.get("local_llm_wpm", 180)
+        chapters = book_details.get('chapters', [])
+        eta_text = calculate_book_eta(chapters, wpm=wpm)
+        self.lbl_eta = ctk.CTkLabel(
+            self.tools_frame,
+            text=f"⏱ Ước tính dịch: {eta_text}",
+            font=Fonts.SMALL,
+            text_color=Colors.TEXT_MUTED
+        )
+        self.lbl_eta.pack(side="right", padx=Spacing.MD)
+        
+        # ── Queue Control Bar ──────────────────────────────────────────
+        self.queue_bar = ctk.CTkFrame(self, fg_color=Colors.BG_CARD, corner_radius=8)
+        self.queue_bar.pack(fill="x", padx=Spacing.XL, pady=(0, Spacing.SM))
+        
+        # Queue status label
+        self.lbl_queue_status = ctk.CTkLabel(
+            self.queue_bar, text="📋 Hàng đợi: Chưa có bài nào",
+            font=Fonts.SMALL, text_color=Colors.TEXT_MUTED
+        )
+        self.lbl_queue_status.pack(side="left", padx=Spacing.MD, pady=Spacing.SM)
+        
+        # Stop button
+        self.btn_queue_stop = ctk.CTkButton(
+            self.queue_bar, text="⏹ Dừng", width=70, height=26,
+            fg_color="transparent", border_width=1, border_color=Colors.DANGER,
+            text_color=Colors.DANGER, hover_color=Colors.BG_CARD_HOVER,
+            font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
+            command=self._stop_queue
+        )
+        self.btn_queue_stop.pack(side="right", padx=2, pady=Spacing.SM)
+        
+        # Pause / Resume button
+        self.btn_queue_pause = ctk.CTkButton(
+            self.queue_bar, text="⏸ Tạm dừng", width=90, height=26,
+            fg_color="transparent", border_width=1, border_color=Colors.WARNING,
+            text_color=Colors.WARNING, hover_color=Colors.BG_CARD_HOVER,
+            font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
+            command=self._toggle_pause_queue
+        )
+        self.btn_queue_pause.pack(side="right", padx=2, pady=Spacing.SM)
+        
+        # Start queue button
+        self.btn_queue_start = ctk.CTkButton(
+            self.queue_bar, text="▶ Bắt đầu Queue", width=120, height=26,
+            fg_color=Colors.SUCCESS, text_color="white",
+            hover_color="#1a8a4a",
+            font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
+            command=self._start_queue
+        )
+        self.btn_queue_start.pack(side="right", padx=(2, Spacing.MD), pady=Spacing.SM)
+
         # Scrollable List of Content
         self.list_frame = ctk.CTkScrollableFrame(
             self, fg_color=Colors.BG_CARD, corner_radius=Spacing.CARD_RADIUS,
@@ -542,11 +607,25 @@ class BookDetailWindow(ctk.CTkToplevel):
                      command=lambda a=article: self._translate_article(a, force_retranslate=True)
                  ).pack(side="left", padx=2, pady=4)
             else:
+                 # Untranslated: show Translate and Queue toggle buttons
                  ctk.CTkButton(
                      right_frame, text="📥 Dịch Lưu trữ", width=110, height=26, 
                      fg_color=Colors.PRIMARY, text_color=Colors.TEXT_PRIMARY, hover_color=Colors.PRIMARY_HOVER,
                      font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
                      command=lambda a=article: self._translate_article(a)
+                 ).pack(side="left", padx=2, pady=4)
+                 
+                 # Queue toggle button
+                 article_id = article.get('id')
+                 is_queued = self.queue_manager.is_queued(article_id)
+                 q_text = "✖ Hủy Queue" if is_queued else "➕ Thêm Queue"
+                 q_color = Colors.DANGER if is_queued else Colors.TEXT_MUTED
+                 ctk.CTkButton(
+                     right_frame, text=q_text, width=90, height=26,
+                     fg_color="transparent", border_width=1, border_color=q_color,
+                     text_color=q_color, hover_color=Colors.BG_CARD_HOVER,
+                     font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
+                     command=lambda a=article: self._toggle_article_queue(a)
                  ).pack(side="left", padx=2, pady=4)
         else:
             # Container articles
@@ -555,6 +634,89 @@ class BookDetailWindow(ctk.CTkToplevel):
                 text_color=Colors.TEXT_MUTED, font=Fonts.TINY
             ).pack(side="left", padx=Spacing.MD, pady=2)
                      
+    # ─────────────────────────────────────────────────────────────────
+    # Queue Control Methods (Task 3.2 + 3.3)
+    # ─────────────────────────────────────────────────────────────────
+
+    def _toggle_article_queue(self, article: Dict) -> None:
+        """Add or remove a single article from the translation queue."""
+        article_id = article.get('id')
+        if self.queue_manager.is_queued(article_id):
+            self.queue_manager.remove(article_id)
+        else:
+            content = self.db_manager.get_article_content(article_id) or ""
+            if not content:
+                from tkinter import messagebox
+                messagebox.showwarning("Nội dung trống", "Bài viết này không có nội dung để dịch.", parent=self)
+                return
+            item = ChapterQueueItem(
+                article_id=article_id,
+                subtitle=article.get('subtitle', ''),
+                word_count=article.get('word_count', 0) or 0,
+                content=content,
+            )
+            self.queue_manager.enqueue(item)
+        # Re-render to reflect updated queue state
+        self._render_content()
+        self._update_queue_status_label()
+
+    def _start_queue(self) -> None:
+        """Start processing the chapter queue."""
+        if not self.queue_manager.pending_ids:
+            from tkinter import messagebox
+            messagebox.showinfo("Hàng đợi trống", "Hãy thêm ít nhất 1 bài vào hàng đợi trước bằng nút '➕ Thêm Queue'.", parent=self)
+            return
+        self.queue_manager.start()
+
+    def _toggle_pause_queue(self) -> None:
+        """Toggle between Pause and Resume."""
+        if self.queue_manager.status == "paused":
+            self.queue_manager.resume()
+        else:
+            self.queue_manager.pause()
+
+    def _stop_queue(self) -> None:
+        """Stop and clear the entire queue."""
+        self.queue_manager.stop()
+        self._render_content()  # Refresh buttons to remove queue indicators
+        self._update_queue_status_label()
+
+    def _on_queue_item_done(self, article_id: int, success: bool) -> None:
+        """Called on main thread when a queue item finishes."""
+        self._render_content()
+        self._refresh_eta()
+        self._update_queue_status_label()
+
+    def _on_queue_done(self) -> None:
+        """Called on main thread when the entire queue is exhausted."""
+        self._update_queue_status_label()
+        from tkinter import messagebox
+        messagebox.showinfo("✅ Hoàn tất", "Hàng đợi dịch đã xử lý xong tất cả các bài!", parent=self)
+
+    def _on_queue_status_change(self, status: str) -> None:
+        """Update the Pause button label based on queue status."""
+        if status == "paused":
+            self.btn_queue_pause.configure(text="▶ Tiếp tục")
+        else:
+            self.btn_queue_pause.configure(text="⏸ Tạm dừng")
+        self._update_queue_status_label()
+
+    def _update_queue_status_label(self) -> None:
+        """Refresh the queue status label text."""
+        if not self.winfo_exists() or not hasattr(self, 'lbl_queue_status'):
+            return
+        count = len(self.queue_manager.pending_ids)
+        status = self.queue_manager.status
+        if count == 0:
+            text = "📋 Hàng đợi: Chưa có bài nào"
+        elif status == "running":
+            text = f"🖥️ Đang dịch... ({count} bài còn lại)"
+        elif status == "paused":
+            text = f"⏸ Tạm dừng ({count} bài còn lại)"
+        else:
+            text = f"📋 Hàng đợi: {count} bài chờ dịch"
+        self.lbl_queue_status.configure(text=text)
+
     def _open_ai_glossary_modal(self):
         """Opens a modal to configure and trigger AI Glossary extraction."""
         if not self.translation_service.api_key:
@@ -780,8 +942,23 @@ class BookDetailWindow(ctk.CTkToplevel):
             messagebox.showinfo("Thành công", "Dịch thành công! Bản dịch đã được lưu.", parent=self)
             # Refresh the content list to show updated status
             self._render_content()
+            # Refresh ETA label with updated chapter data
+            self._refresh_eta()
         else:
             messagebox.showerror("Lỗi", "Dịch thất bại. Vui lòng kiểm tra API Key và thử lại.", parent=self)
+
+    def _refresh_eta(self):
+        """Recalculates and updates the ETA label with the latest chapter data."""
+        if not self.winfo_exists() or not hasattr(self, 'lbl_eta') or not self.lbl_eta.winfo_exists():
+            return
+        fresh_data = self.db_manager.get_book_details(self.book_id)
+        if not fresh_data:
+            return
+        wpm = self.settings_manager.get("local_llm_wpm", 180)
+        chapters = fresh_data.get('chapters', [])
+        eta_text = calculate_book_eta(chapters, wpm=wpm)
+        self.lbl_eta.configure(text=f"⏱ Ước tính dịch: {eta_text}")
+
 
     def _transform_article(self, article, variant_type: str):
         """Handle variant transformation (website/facebook) from archive text."""
