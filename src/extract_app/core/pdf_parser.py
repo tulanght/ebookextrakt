@@ -15,6 +15,7 @@ falling back to per-page splitting.
 import re
 import statistics
 import traceback
+import uuid
 from pathlib import Path
 from typing import List, Dict, Any
 
@@ -80,7 +81,8 @@ def _extract_flat_chapter(doc, start_page, end_page, chapter_title, temp_image_d
             if img_base:
                 img_bytes = img_base["image"]
                 img_ext = img_base["ext"]
-                img_filename = f"pdf_p{page_num+1}_i{img_index}.{img_ext}"
+                unique_id = uuid.uuid4().hex[:8]
+                img_filename = f"pdf_{unique_id}_p{page_num+1}_i{img_index}.{img_ext}"
                 img_path = temp_image_dir / img_filename
                 with open(img_path, "wb") as f_img:
                     f_img.write(img_bytes)
@@ -189,9 +191,11 @@ def _extract_chapter_with_heuristics(doc, start_page, end_page, chapter_title, t
             img_xref = img[0]
             img_base = doc.extract_image(img_xref)
             if img_base:
+                import uuid
                 img_bytes = img_base["image"]
                 img_ext = img_base["ext"]
-                img_filename = f"pdf_p{page_num+1}_i{img_index}.{img_ext}"
+                unique_id = uuid.uuid4().hex[:8]
+                img_filename = f"pdf_{unique_id}_p{page_num+1}_i{img_index}.{img_ext}"
                 img_path = temp_image_dir / img_filename
                 with open(img_path, "wb") as f_img:
                     f_img.write(img_bytes)
@@ -265,7 +269,8 @@ def parse_pdf(filepath: str) -> Dict[str, Any]:
                 if base_image:
                     image_bytes = base_image["image"]
                     image_ext = base_image["ext"]
-                    cover_filename = f"pdf_cover.{image_ext}"
+                    unique_id = uuid.uuid4().hex[:8]
+                    cover_filename = f"pdf_{unique_id}_cover.{image_ext}"
                     image_path = temp_image_dir / cover_filename
                     with open(image_path, "wb") as f_image:
                         f_image.write(image_bytes)

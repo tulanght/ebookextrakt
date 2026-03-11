@@ -12,6 +12,7 @@ content from tags. This avoids code duplication and improves maintainability.
 """
 
 import os
+import uuid
 from pathlib import Path
 from typing import List
 
@@ -22,7 +23,8 @@ from ebooklib import epub
 def save_image_to_temp(image_item, temp_image_dir: Path, prefix="epub_") -> str:
     """Saves an image item to a temporary directory and returns its path."""
     image_bytes = image_item.get_content()
-    image_filename = f"{prefix}{Path(image_item.get_name()).name}"
+    unique_id = uuid.uuid4().hex[:8]
+    image_filename = f"{prefix}{unique_id}_{Path(image_item.get_name()).name}"
     image_path = temp_image_dir / image_filename
     with open(image_path, "wb") as f:
         f.write(image_bytes)

@@ -6,10 +6,13 @@
 # Description: Chapter-level translation queue manager with background thread worker.
 # --------------------------------------------------------------------------------
 
+import time
 import threading
 import queue
 import logging
 from typing import Optional, Callable, List, Dict, Any
+
+from .eta_calculator import update_dynamic_wpm
 
 logger = logging.getLogger(__name__)
 
@@ -241,18 +244,27 @@ class ChapterQueueManager:
         try:
             chunk_size = self.settings_manager.get("chunk_size", 3000)
             chunk_delay = self.settings_manager.get("chunk_delay", 2.0)
+            engine = self.settings_manager.get("translation_engine", "cloud")
 
+            start_time = time.time()
             translation = self.translation_service.translate_text(
                 item.content,
                 chunk_size=chunk_size,
                 delay=chunk_delay,
             )
+            translation_time = time.time() - start_time
 
             if translation:
                 self.db_manager.update_article_translation(
                     item.article_id, translation, "translated"
                 )
                 logger.info(f"Saved translation for article_id={item.article_id}")
+                
+                update_dynamic_wpm(
+                    self.settings_manager, engine,
+                    item.word_count, translation_time
+                )
+                
                 return True
             else:
                 logger.warning(f"Translation returned None for article_id={item.article_id}")

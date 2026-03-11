@@ -28,6 +28,7 @@ class SettingsManager:
         "n_gpu_layers": -1, # Auto/All
         # ETA Estimation (based on user's benchmark: 1370 words in ~7.5 mins)
         "local_llm_wpm": 180,
+        "cloud_llm_wpm": 6000,
     }
 
     def __init__(self, settings_path: str = "user_data/settings.json"):

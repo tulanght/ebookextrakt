@@ -17,10 +17,12 @@ import os
 import webbrowser
 import shutil
 import datetime
+import threading
+import time
 from .theme import Colors, Fonts, Spacing
 from .editor_view import DualViewEditor
 from .tooltip import ToolTip
-from ...core.eta_calculator import calculate_book_eta
+from ...core.eta_calculator import calculate_book_eta, update_dynamic_wpm
 from ...core.queue_manager import ChapterQueueManager, ChapterQueueItem, QueueStatus
 
 class BookCard(ctk.CTkFrame):
@@ -352,9 +354,13 @@ class BookDetailWindow(ctk.CTkToplevel):
         self.btn_ai_glossary.pack(side="left", padx=Spacing.MD)
         
         # ETA Label — estimated time to translate remaining chapters
-        wpm = settings_manager.get("local_llm_wpm", 180)
+        engine = settings_manager.get("translation_engine", "cloud")
+        wpm_key = f"{engine}_llm_wpm"
+        default_wpm = 6000 if engine == "cloud" else 180
+        wpm = int(settings_manager.get(wpm_key, default_wpm))
+        
         chapters = book_details.get('chapters', [])
-        eta_text = calculate_book_eta(chapters, wpm=wpm)
+        eta_text = calculate_book_eta(chapters, wpm=wpm, engine=engine)
         self.lbl_eta = ctk.CTkLabel(
             self.tools_frame,
             text=f"⏱ Ước tính dịch: {eta_text}",
@@ -886,29 +892,68 @@ class BookDetailWindow(ctk.CTkToplevel):
             return
         
         # 3. Show Loading Popup
+        self._translation_start_time = time.time()
+        
         self.loading_win = ctk.CTkToplevel(self)
         self.loading_win.title("Đang dịch...")
-        self.loading_win.geometry("350x120")
+        self.loading_win.geometry("420x200")
         self.loading_win.transient(self)
         self.loading_win.grab_set()
+        self.loading_win.resizable(False, False)
         
-        ctk.CTkLabel(self.loading_win, text=f"Đang dịch: {article.get('subtitle', 'bài viết')[:30]}...", font=("Segoe UI", 12)).pack(pady=(20, 5))
+        # Article name
+        ctk.CTkLabel(
+            self.loading_win, 
+            text=f"📝 {article.get('subtitle', 'bài viết')[:40]}",
+            font=("Segoe UI", 13, "bold"), text_color="#e0e0e0"
+        ).pack(pady=(15, 2))
         
-        self.progress_label = ctk.CTkLabel(self.loading_win, text="Chuẩn bị...", text_color="gray")
-        self.progress_label.pack(pady=5)
+        # Big Timer Display
+        self.timer_label = ctk.CTkLabel(
+            self.loading_win, text="00:00",
+            font=("Consolas", 32, "bold"), text_color="#4fc3f7"
+        )
+        self.timer_label.pack(pady=(5, 5))
         
-        self.progress_bar = ctk.CTkProgressBar(self.loading_win, mode="determinate")
-        self.progress_bar.pack(pady=10, padx=20, fill="x")
-        self.progress_bar.set(0)
+        # Status label (chunk progress)
+        self.progress_label = ctk.CTkLabel(
+            self.loading_win, text="Chuẩn bị...",
+            font=("Segoe UI", 11), text_color="gray"
+        )
+        self.progress_label.pack(pady=(0, 5))
+        
+        # Progress bar — starts in indeterminate (animated) mode
+        # switches to determinate when we know there are multiple chunks
+        self.progress_bar = ctk.CTkProgressBar(
+            self.loading_win, mode="indeterminate",
+            height=12, corner_radius=6,
+            progress_color="#4fc3f7"
+        )
+        self.progress_bar.pack(pady=(0, 15), padx=30, fill="x")
+        self.progress_bar.start()  # start indeterminate animation
+        _progress_switched = [False]  # closure-safe mutable container
+        
+        # Start ticking the timer
+        self._tick_translation_timer()
         
         # 4. Run Translation in Background Thread with progress
         def progress_callback(current, total, status):
             """Update progress on main thread."""
             def update():
                 if hasattr(self, 'loading_win') and self.loading_win.winfo_exists():
-                    self.progress_label.configure(text=status)
-                    if total > 0:
-                        self.progress_bar.set(current / total)
+                    if total > 1 and not _progress_switched[0]:
+                        # Multiple chunks: switch to determinate mode
+                        self.progress_bar.stop()
+                        self.progress_bar.configure(mode="determinate")
+                        _progress_switched[0] = True
+                    
+                    if total > 1:
+                        pct = current / total
+                        self.progress_bar.set(pct)
+                        self.progress_label.configure(text=f"{status}  ({int(pct*100)}%)")
+                    else:
+                        # Single chunk: keep animated, just update status text
+                        self.progress_label.configure(text=status)
             self.after(0, update)
         
         def worker():
@@ -916,19 +961,40 @@ class BookDetailWindow(ctk.CTkToplevel):
                 # Get settings
                 chunk_size = self.settings_manager.get("chunk_size", 3000)
                 chunk_delay = self.settings_manager.get("chunk_delay", 2.0)
+                engine = self.settings_manager.get("translation_engine", "cloud")
                 
+                start_time = time.time()
                 translation = self.translation_service.translate_text(
                     content_text,
                     chunk_size=chunk_size,
                     delay=chunk_delay,
                     progress_callback=progress_callback
                 )
+                translation_time = time.time() - start_time
+                word_count = article.get('word_count', 0) or 0
+                
+                if translation:
+                    update_dynamic_wpm(
+                        self.settings_manager, engine,
+                        word_count, translation_time
+                    )
+                
                 self.after(0, lambda: self._on_translation_complete(article_id, translation))
             except Exception as e:
                 print(f"[Translation Worker Error] {e}")
                 self.after(0, lambda: self._on_translation_complete(article_id, None))
         
         threading.Thread(target=worker, daemon=True).start()
+    
+    def _tick_translation_timer(self):
+        """Updates the elapsed timer label every second while loading_win exists."""
+        if not hasattr(self, 'loading_win') or not self.loading_win.winfo_exists():
+            return
+        elapsed = time.time() - self._translation_start_time
+        mins = int(elapsed // 60)
+        secs = int(elapsed % 60)
+        self.timer_label.configure(text=f"{mins:02d}:{secs:02d}")
+        self.loading_win.after(1000, self._tick_translation_timer)
     
     def _on_translation_complete(self, article_id: int, translation: str):
         """Callback when translation is finished (success or fail)."""
@@ -954,9 +1020,14 @@ class BookDetailWindow(ctk.CTkToplevel):
         fresh_data = self.db_manager.get_book_details(self.book_id)
         if not fresh_data:
             return
-        wpm = self.settings_manager.get("local_llm_wpm", 180)
+            
+        engine = self.settings_manager.get("translation_engine", "cloud")
+        wpm_key = f"{engine}_llm_wpm"
+        default_wpm = 6000 if engine == "cloud" else 180
+        wpm = int(self.settings_manager.get(wpm_key, default_wpm))
+        
         chapters = fresh_data.get('chapters', [])
-        eta_text = calculate_book_eta(chapters, wpm=wpm)
+        eta_text = calculate_book_eta(chapters, wpm=wpm, engine=engine)
         self.lbl_eta.configure(text=f"⏱ Ước tính dịch: {eta_text}")
 
 
