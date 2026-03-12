@@ -333,7 +333,7 @@ class TranslationService:
             # (TranslateGemma 12B cannot reliably follow 'translate only this part' instructions)
             for i, chunk in enumerate(chunks):
                 if progress_callback:
-                    progress_callback(i + 1, total, f"Dịch phần {i + 1}/{total} (Local)...")
+                    progress_callback(i, total, f"Đang dịch phần {i + 1}/{total} (Local)...")
                 
                 res, err = self._translate_local_chunk(chunk)
                 if err:
@@ -341,6 +341,9 @@ class TranslationService:
                     return None
                 
                 results[i] = res
+                
+                if progress_callback:
+                    progress_callback(i + 1, total, f"Đã dịch {i + 1}/{total} (Local)...")
         else:
             # Cloud can be parallel
             # We use 3 workers as a safe default for free tier/low latency

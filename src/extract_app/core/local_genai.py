@@ -8,7 +8,10 @@
 
 import os
 import time
+import logging
 from typing import Optional, Dict, Any, List, Callable
+
+logger = logging.getLogger(__name__)
 
 try:
     from llama_cpp import Llama
@@ -34,13 +37,13 @@ class LocalGenAI:
     def __init__(self):
         self.model_loaded = False
         
-    def load_model(self, model_path: str, n_ctx: int = 8192, n_gpu_layers: int = -1):
+    def load_model(self, model_path: str, n_ctx: int = 4096, n_gpu_layers: int = -1):
         """
         Load the GGUF model into memory/GPU.
         
         Args:
             model_path: Absolute path to .gguf file
-            n_ctx: Context window size (default 8192 for Gemma 2)
+            n_ctx: Context window size (reduced to 4096 for translation efficiency)
             n_gpu_layers: Number of layers to offload to GPU (-1 = all, 0 = cpu only)
         """
         if Llama is None:
@@ -52,7 +55,7 @@ class LocalGenAI:
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Không tìm thấy model tại: {model_path}")
 
-        print(f"[LocalLLM] Loading model: {model_path} (GPU Layers: {n_gpu_layers})...")
+        logger.info(f"[LocalLLM] Loading model: {model_path} (GPU Layers: {n_gpu_layers})...")
         
         # Attempt 1: Load with requested configuration (likely with GPU)
         try:
@@ -60,31 +63,33 @@ class LocalGenAI:
                 model_path=model_path,
                 n_ctx=n_ctx,
                 n_gpu_layers=n_gpu_layers,
+                flash_attn=True,
                 verbose=False
             )
             self._model_path = model_path
             self.model_loaded = True
-            print("[LocalLLM] Model loaded successfully.")
+            logger.info("[LocalLLM] Model loaded successfully.")
             return
         except Exception as e:
-            print(f"[LocalLLM] Error loading with GPU layers={n_gpu_layers}: {e}")
+            logger.error(f"[LocalLLM] Error loading with GPU layers={n_gpu_layers}: {e}")
             
             # Attempt 2: Fallback to CPU if GPU failed and n_gpu_layers was not 0
             if n_gpu_layers != 0:
-                print("[LocalLLM] Attempting fallback to CPU (n_gpu_layers=0)...")
+                logger.info("[LocalLLM] Attempting fallback to CPU (n_gpu_layers=0)...")
                 try:
                     self._llm = Llama(
                         model_path=model_path,
                         n_ctx=n_ctx,
                         n_gpu_layers=0, # Force CPU
+                        flash_attn=True,
                         verbose=False
                     )
                     self._model_path = model_path
                     self.model_loaded = True
-                    print("[LocalLLM] Model loaded successfully (CPU Fallback).")
+                    logger.info("[LocalLLM] Model loaded successfully (CPU Fallback).")
                     return
                 except Exception as e_cpu:
-                    print(f"[LocalLLM] CPU Fallback failed: {e_cpu}")
+                    logger.error(f"[LocalLLM] CPU Fallback failed: {e_cpu}")
             
             self.model_loaded = False
             raise e
@@ -102,7 +107,7 @@ class LocalGenAI:
                           system_instruction: str, 
                           prompt: str, 
                           max_tokens: int = 4096,
-                          temperature: float = 0.3,
+                          temperature: float = 0.15,
                           stop: List[str] = None) -> Optional[str]:
         """
         Generate response using ChatML/Gemma format.
@@ -125,7 +130,7 @@ class LocalGenAI:
             )
             return output['choices'][0]['text'].strip()
         except Exception as e:
-            print(f"[LocalLLM] Generation error: {e}")
+            logger.error(f"[LocalLLM] Generation error: {e}")
             return None
 
 class LocalTranslationService:
