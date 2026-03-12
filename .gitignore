@@ -42,6 +42,8 @@ verify_*.py
 temp_*.py
 scripts/test_*.py
 scripts/verify_*.py
+diagnose_local_llm.py
+benchmark_models.py
 *.patch
 
 # User Data (Database, Settings, Sensitive Info)
