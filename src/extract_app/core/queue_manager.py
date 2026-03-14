@@ -81,6 +81,7 @@ class ChapterQueueManager:
 
         self._worker_thread: Optional[threading.Thread] = None
         self._current_item: Optional[ChapterQueueItem] = None
+        self.done_count: int = 0  # Tracks items translated in current session
 
     # ─────────────────────────────────────────────────────────────────
     # Public API
@@ -135,6 +136,7 @@ class ChapterQueueManager:
             return
         self._stop_event.clear()
         self._pause_event.set()  # ensure un-paused
+        self.done_count = 0  # Reset counter for this session
         self._set_status(QueueStatus.RUNNING)
         if self._worker_thread is None or not self._worker_thread.is_alive():
             self._worker_thread = threading.Thread(
@@ -171,6 +173,7 @@ class ChapterQueueManager:
             except queue.Empty:
                 break
         self._set_status(QueueStatus.IDLE)
+        self.done_count = 0  # Reset on stop
         logger.info("Queue stopped and cleared")
 
     def clear(self) -> None:
@@ -228,6 +231,7 @@ class ChapterQueueManager:
 
             self._current_item = None
             self._queue.task_done()
+            self.done_count += 1  # Increment completed count
 
             if self.on_item_done:
                 self.on_item_done(item.article_id, success)

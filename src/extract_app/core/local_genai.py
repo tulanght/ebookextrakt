@@ -172,14 +172,22 @@ class LocalTranslationService:
             else:
                 return "Error: Model path not configured."
         
-        # Build instruction: use strict prompt as base, append style/glossary if provided
+        # Build instruction: use strict prompt as base, append style if provided
         base_instruction = self.STRICT_SYSTEM_PROMPT
         if system_instruction:
             base_instruction += f"\n\nHƯỚNG DẪN BỔ SUNG:\n{system_instruction}"
+        
+        # Build the user prompt: glossary BEFORE text for better attention
+        # (closer to output = higher attention weight in small models)
+        user_prompt = ""
         if glossary:
-            base_instruction += f"\n\nTỪ VỰNG BẮT BUỘC (Glossary):\n{glossary}"
+            user_prompt += (
+                "THUẬT NGỮ BẮT BUỘC (phải dùng đúng từ này khi gặp):\n"
+                f"{glossary}\n\n"
+            )
+        user_prompt += text
 
         return self.engine.generate_response(
             system_instruction=base_instruction,
-            prompt=text
+            prompt=user_prompt
         )

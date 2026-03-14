@@ -196,10 +196,10 @@ class TestPromptInjection(unittest.TestCase):
         self.assertEqual(result, "")
 
     def test_single_term_format(self):
-        """Format must be: 'en_term' : 'vi_term'"""
+        """Format must be: 'en_term' → 'vi_term'"""
         self.gm.add_term("habitat", "môi trường sống")
         result = self.gm.get_active_glossary_string()
-        self.assertIn("'habitat' : 'môi trường sống'", result)
+        self.assertIn("'habitat' → 'môi trường sống'", result)
 
     def test_multiple_terms_one_per_line(self):
         """Multiple terms should each appear on their own line."""
@@ -248,6 +248,54 @@ class TestPersistence(unittest.TestCase):
         gm1.set_active_category("History")
         gm2 = GlossaryManager(data_path=self.path)
         self.assertEqual(gm2.get_active_category(), "History")
+
+class TestRelevantGlossaryString(unittest.TestCase):
+    """Tests for get_relevant_glossary_string() — chunk-aware filtering."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.gm = GlossaryManager(data_path=str(Path(self.tmp) / "g.json"))
+        # Add a realistic glossary
+        self.gm.add_term("sow", "lợn nái")
+        self.gm.add_term("wild boar", "lợn rừng")
+        self.gm.add_term("snout", "mõm")
+        self.gm.add_term("habitat", "môi trường sống")
+        self.gm.add_term("Tamworth", "(giống lợn) Tamworth")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_returns_only_matching_terms(self):
+        """Only terms present in source text should appear."""
+        text = "The sow used her snout to dig for roots."
+        result = self.gm.get_relevant_glossary_string(text)
+        self.assertIn("sow", result)
+        self.assertIn("snout", result)
+        self.assertNotIn("habitat", result)
+        self.assertNotIn("wild boar", result)
+
+    def test_case_insensitive_matching(self):
+        """Matching should be case-insensitive."""
+        text = "The SOW is a female pig."
+        result = self.gm.get_relevant_glossary_string(text)
+        self.assertIn("sow", result)
+
+    def test_word_boundary_no_partial_match(self):
+        """'sow' should NOT match in 'Moscow'."""
+        text = "The delegation traveled to Moscow for the conference."
+        result = self.gm.get_relevant_glossary_string(text)
+        self.assertNotIn("sow", result)
+
+    def test_empty_text_returns_empty(self):
+        result = self.gm.get_relevant_glossary_string("")
+        self.assertEqual(result, "")
+
+    def test_multi_word_term_matching(self):
+        """Multi-word terms like 'wild boar' should match as a phrase."""
+        text = "The wild boar is the ancestor of the domestic pig."
+        result = self.gm.get_relevant_glossary_string(text)
+        self.assertIn("wild boar", result)
 
 
 if __name__ == '__main__':
