@@ -16,9 +16,13 @@ class DatabaseManager:
     """
     Handles SQLite database connections and strict schema management.
     """
-    
-    def __init__(self, db_path: str = "user_data/extract.db"):
-        self.db_path = Path(db_path)
+    def __init__(self, db_path: str = None):
+        if db_path is None:
+            from .config import get_user_data_dir
+            self.db_path = get_user_data_dir() / "extract.db"
+        else:
+            self.db_path = Path(db_path)
+            
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
@@ -426,12 +430,39 @@ class DatabaseManager:
             self._save_node_batch(cursor, chapter_id, child_node, order_index + 1000 + i, article_id)
             
     def get_all_books(self) -> List[Dict]:
-        """Retrieves all books."""
+        """Retrieves all books with translation stats (total & translated leaf articles)."""
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM books ORDER BY added_date DESC")
+            cursor.execute("""
+                SELECT b.*,
+                    COUNT(CASE WHEN a.is_leaf = 1 THEN 1 END) as total_leaf,
+                    COUNT(CASE WHEN a.is_leaf = 1 AND a.status = 'translated' THEN 1 END) as translated_count
+                FROM books b
+                LEFT JOIN chapters c ON c.book_id = b.id
+                LEFT JOIN articles a ON a.chapter_id = c.id
+                GROUP BY b.id
+                ORDER BY b.added_date DESC
+            """)
             return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def get_dashboard_stats(self) -> Dict[str, int]:
+        """Returns total books and total translated articles."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) as count FROM books")
+            books_count = cursor.fetchone()['count']
+            
+            cursor.execute("SELECT COUNT(*) as count FROM articles WHERE status = 'translated' AND is_leaf = 1")
+            articles_count = cursor.fetchone()['count']
+            
+            return {
+                'books': books_count,
+                'translated_articles': articles_count
+            }
         finally:
             conn.close()
 

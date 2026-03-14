@@ -25,8 +25,12 @@ class GlossaryManager:
         }
     }
 
-    def __init__(self, data_path: str = "user_data/glossary.json"):
-        self.data_path = Path(data_path)
+    def __init__(self, data_path: str = None):
+        if data_path is None:
+            from .config import get_user_data_dir
+            self.data_path = get_user_data_dir() / "glossary.json"
+        else:
+            self.data_path = Path(data_path)
         self.data: Dict = copy.deepcopy(self.DEFAULT_DATA)  # Deep copy avoids shared state
         self._load_data()
 
@@ -147,7 +151,7 @@ class GlossaryManager:
     def get_active_glossary_string(self) -> str:
         """
         Serialize the active category into a string suitable for LLM injection.
-        Example: "habitat -> môi trường sống"
+        Returns ALL terms — use get_relevant_glossary_string() for filtered injection.
         """
         terms = self.get_terms()
         if not terms:
@@ -155,6 +159,46 @@ class GlossaryManager:
         
         lines = []
         for en, vi in terms.items():
-            lines.append(f"'{en}' : '{vi}'")
+            lines.append(f"'{en}' → '{vi}'")
             
         return "\n".join(lines)
+
+    def get_relevant_glossary_string(self, source_text: str) -> str:
+        """
+        Filter active glossary to only include terms that appear in source_text.
+        Uses case-insensitive word-boundary matching for accuracy.
+        
+        This is critical for Local LLM (TranslateGemma 12B) which has limited
+        context (4096 tokens). Injecting 100+ terms wastes precious tokens;
+        typically only 5-15 terms are relevant per chunk of 1500 chars.
+        
+        Args:
+            source_text: The chunk of text that will be translated.
+            
+        Returns:
+            Formatted glossary string with only matching terms, or empty string.
+        """
+        import re
+        
+        terms = self.get_terms()
+        if not terms or not source_text:
+            return ""
+        
+        text_lower = source_text.lower()
+        matched_lines = []
+        
+        for en, vi in terms.items():
+            en_lower = en.lower()
+            # Use word boundary matching to avoid partial matches
+            # e.g., "sow" should not match "Moscow"
+            # For multi-word terms, check if the exact phrase exists
+            try:
+                pattern = r'\b' + re.escape(en_lower) + r'\b'
+                if re.search(pattern, text_lower):
+                    matched_lines.append(f"{en} → {vi}")
+            except re.error:
+                # Fallback to simple substring check for unusual terms
+                if en_lower in text_lower:
+                    matched_lines.append(f"{en} → {vi}")
+        
+        return "\n".join(matched_lines)

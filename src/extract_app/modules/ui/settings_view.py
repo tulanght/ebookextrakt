@@ -8,8 +8,8 @@
 
 import customtkinter as ctk
 import tkinter as tk
-from tkinter import messagebox
 from .theme import Colors, Fonts, Spacing
+from .custom_dialog import ask_yes_no, show_info, show_warning, show_error
 
 class SettingsView(ctk.CTkFrame):
     """
@@ -86,8 +86,12 @@ class SettingsView(ctk.CTkFrame):
             fg_color=Colors.PRIMARY, hover_color=Colors.PRIMARY_HOVER
         ).pack(side="left", padx=Spacing.XL)
         
+        # --- Dynamic Container for Settings ---
+        self.dynamic_settings_frame = ctk.CTkFrame(scroll, fg_color="transparent")
+        self.dynamic_settings_frame.pack(fill="x")
+        
         # --- 2. Cloud Settings ---
-        self.cloud_frame = ctk.CTkFrame(scroll, fg_color=Colors.BG_APP, corner_radius=Spacing.CARD_RADIUS)
+        self.cloud_frame = ctk.CTkFrame(self.dynamic_settings_frame, fg_color=Colors.BG_APP, corner_radius=Spacing.CARD_RADIUS)
         self.cloud_frame.pack(fill="x", pady=Spacing.MD, ipady=Spacing.SM)
         
         ctk.CTkLabel(
@@ -146,7 +150,7 @@ class SettingsView(ctk.CTkFrame):
         ).pack(side="left", padx=Spacing.MD)
         
         # --- 3. Local Settings ---
-        self.local_frame = ctk.CTkFrame(scroll, fg_color=Colors.BG_APP, corner_radius=Spacing.CARD_RADIUS)
+        self.local_frame = ctk.CTkFrame(self.dynamic_settings_frame, fg_color=Colors.BG_APP, corner_radius=Spacing.CARD_RADIUS)
         self.local_frame.pack(fill="x", pady=Spacing.MD, ipady=Spacing.SM)
         
         ctk.CTkLabel(
@@ -267,20 +271,11 @@ class SettingsView(ctk.CTkFrame):
     def _update_ui_state(self):
         engine = self.engine_var.get()
         if engine == "cloud":
-            self._set_enabled(self.cloud_frame, True)
-            self._set_enabled(self.local_frame, False)
+            self.local_frame.pack_forget()
+            self.cloud_frame.pack(fill="x", pady=Spacing.MD, ipady=Spacing.SM)
         else:
-            self._set_enabled(self.cloud_frame, False)
-            self._set_enabled(self.local_frame, True)
-            
-    def _set_enabled(self, widget, enabled):
-        state = "normal" if enabled else "disabled"
-        try:
-            widget.configure(state=state)
-        except (ValueError, tk.TclError, AttributeError):
-            pass 
-        for child in widget.winfo_children():
-            self._set_enabled(child, enabled)
+            self.cloud_frame.pack_forget()
+            self.local_frame.pack(fill="x", pady=Spacing.MD, ipady=Spacing.SM)
 
     def _toggle_key_visibility(self):
         self.show_api_key = not self.show_api_key

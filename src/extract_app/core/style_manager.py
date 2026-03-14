@@ -78,8 +78,12 @@ LƯU Ý:
         "colorful": "sặc sỡ/lộng lẫy"
     }
 
-    def __init__(self, user_data_dir: str = "user_data"):
-        self.data_dir = Path(user_data_dir)
+    def __init__(self, user_data_dir: str = None):
+        if user_data_dir is None:
+            from .config import get_user_data_dir
+            self.data_dir = get_user_data_dir()
+        else:
+            self.data_dir = Path(user_data_dir)
         self.styles_path = self.data_dir / "styles.json"
         self.glossary_path = self.data_dir / "glossary.json"
         

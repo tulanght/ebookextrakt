@@ -18,7 +18,7 @@ import queue
 import subprocess
 import threading
 import time
-import tkinter.messagebox as messagebox
+from .ui.custom_dialog import ask_yes_no, show_info, show_warning, show_error
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -158,11 +158,15 @@ class MainWindow(ctk.CTk):
         """Reload history from manager and update dashboard."""
         history = self.history_manager.load_history()
         self.dashboard_view.update_history(history, self._on_open_recent_file)
+        
+        # Update connection stats
+        stats = self.db_manager.get_dashboard_stats()
+        self.dashboard_view.update_stats(stats.get('books', 0), stats.get('translated_articles', 0))
 
     def _on_open_recent_file(self, filepath: str):
         """Handle opening a file from history."""
         if not Path(filepath).exists():
-            if messagebox.askyesno("File không tồn tại", f"File không tìm thấy:\n{filepath}\nXóa khỏi lịch sử?"):
+            if ask_yes_no(self, "File không tồn tại", f"File không tìm thấy:\n{filepath}\nXóa khỏi lịch sử?"):
                 self.history_manager.remove_entry(filepath)
                 self._update_dashboard_history()
             return
@@ -290,7 +294,7 @@ class MainWindow(ctk.CTk):
             self.current_results = results
             
             if results.get('error'):
-                 messagebox.showerror("Lỗi", f"Lỗi phân tích: {results.get('error')}")
+                 show_error(self, "Lỗi", f"Lỗi phân tích: {results.get('error')}")
                  self._show_view("dashboard")
                  return
             
@@ -307,7 +311,7 @@ class MainWindow(ctk.CTk):
                 self.sidebar.show_active_book_controls()
                 self.sidebar.set_active_button("results")
             else:
-                 messagebox.showwarning("Cảnh báo", "Không tìm thấy nội dung hợp lệ.")
+                 show_warning(self, "Cảnh báo", "Không tìm thấy nội dung hợp lệ.")
                  self._show_view("dashboard")
                 
         except queue.Empty:
@@ -325,9 +329,11 @@ class MainWindow(ctk.CTk):
         full_output_path = Path(target_dir) / output_name.replace(" ", "_").replace(".epub", "").replace(".pdf", "")
         
         if full_output_path.exists():
-            if not messagebox.askyesno(
+            if not ask_yes_no(
+                self,
                 "Thư mục đã tồn tại", 
-                f"Thư mục '{full_output_path.name}' đã tồn tại.\nBạn có muốn ghi đè (xóa và tạo lại) không?"
+                f"Thư mục '{full_output_path.name}' đã tồn tại.\nBạn có muốn ghi đè (xóa và tạo lại) không?",
+                is_danger=True
             ):
                 return
         
@@ -379,13 +385,14 @@ class MainWindow(ctk.CTk):
         
         if success:
              output_path = message
-             if messagebox.askyesno(
+             if ask_yes_no(
+                self,
                 "Trích xuất thành công",
                 f"Đã lưu vào:\n{output_path}\nMở thư mục ngay?"
             ):
                 self._open_folder(output_path)
         else:
-            messagebox.showerror("Lỗi trích xuất", f"Có lỗi xảy ra: {message}")
+            show_error(self, "Lỗi trích xuất", f"Có lỗi xảy ra: {message}")
 
     def _open_folder(self, path: str):
         """Open the specified folder in the default file explorer."""
@@ -410,7 +417,7 @@ class MainWindow(ctk.CTk):
         Prompts the user for confirmation before closing.
         """
         if self.current_results:
-            if messagebox.askyesno("Đóng file", "Bạn có chắc muốn đóng file hiện tại không?"):
+            if ask_yes_no(self, "Đóng file", "Bạn có chắc muốn đóng file hiện tại không?"):
                  self.current_results = {}
                  self.current_filepath = ""
                  self.top_bar.set_file_path("")

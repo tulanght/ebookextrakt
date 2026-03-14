@@ -239,7 +239,9 @@ class DualViewEditor(ctk.CTkToplevel):
                 }]
             }]
             
-            output_dir = Path("user_data/webview_preview")
+            from ...core.config import get_user_data_dir
+            output_dir = get_user_data_dir() / "webview_preview"
+            images_dir = output_dir / "images"
             
             if output_dir.exists():
                 try:

@@ -50,10 +50,10 @@ class DashboardView(ctk.CTkFrame):
                                col=0, command=self.on_import, accent=Colors.PRIMARY)
         
         # Card 2: Placeholder for stats
-        self._create_stat_card(cards_row, "📚", "Thư viện", "0 cuốn sách", col=1)
+        self.lbl_library_count = self._create_stat_card(cards_row, "📚", "Thư viện", "0 cuốn sách", col=1)
         
         # Card 3: Placeholder
-        self._create_stat_card(cards_row, "🌐", "Đã dịch", "0 bài viết", col=2, accent=Colors.SUCCESS)
+        self.lbl_translated_count = self._create_stat_card(cards_row, "🌐", "Đã dịch", "0 bài viết", col=2, accent=Colors.SUCCESS)
 
         # === Recent Files Card ===
         recent_card = ctk.CTkFrame(
@@ -112,10 +112,11 @@ class DashboardView(ctk.CTkFrame):
         ).pack(anchor="w", padx=Spacing.LG)
         
         # Value/Subtitle
-        ctk.CTkLabel(
+        lbl_val = ctk.CTkLabel(
             card, text=value, font=Fonts.SMALL,
             text_color=Colors.TEXT_MUTED, anchor="w"
-        ).pack(anchor="w", padx=Spacing.LG, pady=(0, Spacing.SM))
+        )
+        lbl_val.pack(anchor="w", padx=Spacing.LG, pady=(0, Spacing.SM))
         
         # Make the whole card clickable if command given
         if command:
@@ -125,6 +126,15 @@ class DashboardView(ctk.CTkFrame):
             # Hover effect
             card.bind("<Enter>", lambda e: card.configure(fg_color=Colors.BG_CARD_HOVER, border_color=Colors.BORDER_ACCENT))
             card.bind("<Leave>", lambda e: card.configure(fg_color=Colors.BG_CARD, border_color=Colors.BORDER))
+            
+        return lbl_val
+
+    def update_stats(self, books_count: int, articles_count: int):
+        """Update Dashboard stats counters."""
+        if hasattr(self, 'lbl_library_count'):
+            self.lbl_library_count.configure(text=f"{books_count} cuốn sách")
+        if hasattr(self, 'lbl_translated_count'):
+            self.lbl_translated_count.configure(text=f"{articles_count} bài viết đã dịch")
 
     def update_history(self, history_list: List[Dict], open_callback: Callable[[str], None]):
         """Update the Recent Files list."""

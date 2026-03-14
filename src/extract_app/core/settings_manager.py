@@ -31,8 +31,12 @@ class SettingsManager:
         "cloud_llm_wpm": 6000,
     }
 
-    def __init__(self, settings_path: str = "user_data/settings.json"):
-        self.settings_path = Path(settings_path)
+    def __init__(self, settings_path: str = None):
+        if settings_path is None:
+            from .config import get_user_data_dir
+            self.settings_path = get_user_data_dir() / "settings.json"
+        else:
+            self.settings_path = Path(settings_path)
         self.settings: Dict[str, Any] = self.DEFAULT_SETTINGS.copy()
         self._load_settings()
 

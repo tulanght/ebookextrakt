@@ -17,8 +17,12 @@ class HistoryManager:
     Manages user history (recently opened files).
     Stores data in user_data/history.json.
     """
-    def __init__(self, storage_dir: str = "user_data", filename: str = "history.json", max_items: int = 10):
-        self.storage_dir = Path(storage_dir)
+    def __init__(self, storage_dir: str = None, filename: str = "history.json", max_items: int = 10):
+        if storage_dir is None:
+            from .config import get_user_data_dir
+            self.storage_dir = get_user_data_dir()
+        else:
+            self.storage_dir = Path(storage_dir)
         self.history_file = self.storage_dir / filename
         self.max_items = max_items
         self._ensure_storage()
