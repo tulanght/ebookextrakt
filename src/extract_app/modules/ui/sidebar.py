@@ -19,6 +19,8 @@ class SidebarFrame(ctk.CTkFrame):
     NAV_ITEMS = [
         ("🏠", "Dashboard",  "dashboard"),
         ("📚", "Thư viện",   "library"),
+        ("🚀", "Publishing", "publish"),
+        ("🎯", "Từ Khoá",    "keyword"),
         ("⚙️", "Cài đặt",   "settings"),
     ]
 

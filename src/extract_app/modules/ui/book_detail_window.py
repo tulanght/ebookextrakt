@@ -625,7 +625,20 @@ class BookDetailWindow(ctk.CTkToplevel):
         self.progress_bar.start()
 
         def worker():
-            terms, err = self.translation_service.extract_glossary_from_text(sample_text, subject)
+            start_time = time.time()
+            engine = self.settings_manager.get("translation_engine", "cloud")
+            terms, usage, err = self.translation_service.extract_glossary_from_text(sample_text, subject)
+            duration = time.time() - start_time
+            if terms and usage and all_article_ids:
+                first_art_id = all_article_ids[0]
+                self.db_manager.log_api_usage(
+                    first_art_id,
+                    'extract_glossary',
+                    engine,
+                    usage.get('in', 0),
+                    usage.get('out', 0),
+                    duration
+                )
             self.after(0, lambda: self._on_glossary_extraction_complete(terms, err, target_category))
 
         threading.Thread(target=worker, daemon=True).start()
@@ -707,9 +720,18 @@ class BookDetailWindow(ctk.CTkToplevel):
                 chunk_delay = self.settings_manager.get("chunk_delay", 2.0)
                 engine = self.settings_manager.get("translation_engine", "cloud")
                 start_time = time.time()
-                translation = self.translation_service.translate_text(content_text, chunk_size=chunk_size, delay=chunk_delay, progress_callback=progress_callback)
+                translation, usage = self.translation_service.translate_text(content_text, chunk_size=chunk_size, delay=chunk_delay, progress_callback=progress_callback)
                 translation_time = time.time() - start_time
                 if translation:
+                    if usage:
+                        self.db_manager.log_api_usage(
+                            article_id, 
+                            'translation', 
+                            engine, 
+                            usage.get('in', 0), 
+                            usage.get('out', 0), 
+                            translation_time
+                        )
                     update_dynamic_wpm(self.settings_manager, engine, article.get('word_count', 0) or 0, translation_time)
                 self.after(0, lambda: self._on_translation_complete(article_id, translation))
             except Exception as e:
@@ -775,7 +797,19 @@ class BookDetailWindow(ctk.CTkToplevel):
         self.progress_bar.start()
 
         def worker():
-            result, err = self.translation_service.transform_text(archive_text, original_text, variant_type)
+            start_time = time.time()
+            engine = self.settings_manager.get("translation_engine", "cloud")
+            result, usage, err = self.translation_service.transform_text(archive_text, original_text, variant_type)
+            duration = time.time() - start_time
+            if result and usage:
+                self.db_manager.log_api_usage(
+                    article_id,
+                    f'transform_{variant_type}',
+                    engine,
+                    usage.get('in', 0),
+                    usage.get('out', 0),
+                    duration
+                )
             self.after(0, lambda: self._on_transform_complete(article_id, variant_type, result, err))
 
         threading.Thread(target=worker, daemon=True).start()
@@ -799,7 +833,7 @@ class BookDetailWindow(ctk.CTkToplevel):
         content_text = self.db_manager.get_article_content(article['id'])
         full_article = article.copy()
         full_article['content_text'] = content_text
-        editor = DualViewEditor(self, full_article, self._save_translation_update, self.db_manager)
+        editor = DualViewEditor(self, full_article, self._save_translation_update, self.db_manager, self.translation_service)
         editor.grab_set()
 
     def _save_translation_update(self, article_id, new_text):

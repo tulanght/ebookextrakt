@@ -198,18 +198,20 @@ class DatabaseManager:
         # Trigger: tự động sync khi INSERT article
         cursor.execute("""
             CREATE TRIGGER IF NOT EXISTS articles_fts_insert
-            AFTER INSERT ON articles BEGIN
+            AFTER INSERT ON articles WHEN new.is_leaf = 1 BEGIN
                 INSERT INTO articles_fts(rowid, content_text, subtitle)
                 VALUES (new.id, new.content_text, new.subtitle);
             END
         """)
 
         # Trigger: tự động sync khi UPDATE article
+        # Chỉ update index ảo nếu bài viết là leaf
         cursor.execute("""
             CREATE TRIGGER IF NOT EXISTS articles_fts_update
-            AFTER UPDATE ON articles BEGIN
+            AFTER UPDATE ON articles WHEN old.is_leaf = 1 OR new.is_leaf = 1 BEGIN
                 INSERT INTO articles_fts(articles_fts, rowid, content_text, subtitle)
                 VALUES ('delete', old.id, old.content_text, old.subtitle);
+                
                 INSERT INTO articles_fts(rowid, content_text, subtitle)
                 VALUES (new.id, new.content_text, new.subtitle);
             END
@@ -218,7 +220,7 @@ class DatabaseManager:
         # Trigger: tự động sync khi DELETE article
         cursor.execute("""
             CREATE TRIGGER IF NOT EXISTS articles_fts_delete
-            BEFORE DELETE ON articles BEGIN
+            BEFORE DELETE ON articles WHEN old.is_leaf = 1 BEGIN
                 INSERT INTO articles_fts(articles_fts, rowid, content_text, subtitle)
                 VALUES ('delete', old.id, old.content_text, old.subtitle);
             END
@@ -347,7 +349,7 @@ class DatabaseManager:
         except Exception as e:
              print(f"[DB] Article Migration 5 failed: {e}")
 
-        # Migration: FTS5 index
+        # Migration: FTS5 index and trigger patch
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='articles_fts'")
         if not cursor.fetchone():
             print("[DB] Migration: Building FTS5 index (first time, may take a moment)...")
@@ -368,6 +370,41 @@ class DatabaseManager:
             cursor.execute("SELECT COUNT(*) as c FROM articles_fts")
             count = cursor.fetchone()['c']
             print(f"[DB] FTS5 index built: {count:,} articles indexed.")
+            
+        # Patch v1.1.2: Fix triggers not filtering is_leaf=0
+        try:
+            # Recreate triggers to ensure they have the WHEN is_leaf=1 condition
+            cursor.execute("DROP TRIGGER IF EXISTS articles_fts_insert")
+            cursor.execute("DROP TRIGGER IF EXISTS articles_fts_update")
+            cursor.execute("DROP TRIGGER IF EXISTS articles_fts_delete")
+            
+            cursor.execute("""
+                CREATE TRIGGER articles_fts_insert
+                AFTER INSERT ON articles WHEN new.is_leaf = 1 BEGIN
+                    INSERT INTO articles_fts(rowid, content_text, subtitle)
+                    VALUES (new.id, new.content_text, new.subtitle);
+                END
+            """)
+            cursor.execute("""
+                CREATE TRIGGER articles_fts_update
+                AFTER UPDATE ON articles WHEN old.is_leaf = 1 OR new.is_leaf = 1 BEGIN
+                    INSERT INTO articles_fts(articles_fts, rowid, content_text, subtitle)
+                    VALUES ('delete', old.id, old.content_text, old.subtitle);
+                    
+                    INSERT INTO articles_fts(rowid, content_text, subtitle)
+                    VALUES (new.id, new.content_text, new.subtitle);
+                END
+            """)
+            cursor.execute("""
+                CREATE TRIGGER articles_fts_delete
+                BEFORE DELETE ON articles WHEN old.is_leaf = 1 BEGIN
+                    INSERT INTO articles_fts(articles_fts, rowid, content_text, subtitle)
+                    VALUES ('delete', old.id, old.content_text, old.subtitle);
+                END
+            """)
+            conn.commit()
+        except Exception as e:
+            print(f"[DB] Trigger patch failed: {e}")
 
         conn.close()
 

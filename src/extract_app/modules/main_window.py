@@ -41,6 +41,8 @@ from .ui.results_view import ResultsView
 from .ui.log_panel import LogPanel
 from .ui.loading_overlay import LoadingOverlay
 from .ui.library_view import LibraryView # New Import
+from .ui.publish_view import PublishView # New Import
+from .ui.keyword_plan_view import KeywordPlanView # New Import
 from .ui.settings_view import SettingsView # New Import
 
 class MainWindow(ctk.CTk):
@@ -142,6 +144,18 @@ class MainWindow(ctk.CTk):
             settings_manager=self.settings_manager,
             translation_service=self.translation_service
         ) # Initialize Library View
+        self.publish_view = PublishView(
+            self.content_area,
+            db_manager=self.db_manager,
+            settings_manager=self.settings_manager,
+            translation_service=self.translation_service 
+        )
+        self.keyword_plan_view = KeywordPlanView(
+            self.content_area,
+            db_manager=self.db_manager,
+            settings_manager=self.settings_manager,
+            translation_service=self.translation_service
+        )
         self.settings_view = SettingsView(
             self.content_area, 
             settings_manager=self.settings_manager, 
@@ -195,6 +209,14 @@ class MainWindow(ctk.CTk):
         elif view_name == "library":
             self.library_view.refresh_library() # Refresh content
             self._show_view("library")
+
+        elif view_name == "publish":
+            self.publish_view.refresh_list()
+            self._show_view("publish")
+
+        elif view_name == "keyword":
+            self.keyword_plan_view.refresh_clusters()
+            self._show_view("keyword")
             
         elif view_name == "settings":
             self._show_view("settings")
@@ -205,8 +227,8 @@ class MainWindow(ctk.CTk):
         self.dashboard_view.grid_forget()
         self.results_view.grid_forget()
         self.library_view.grid_forget()
-        self.results_view.grid_forget()
-        self.library_view.grid_forget()
+        self.publish_view.grid_forget()
+        self.keyword_plan_view.grid_forget()
         self.settings_view.grid_forget()
         self.loading_overlay.grid_forget()
         
@@ -217,6 +239,10 @@ class MainWindow(ctk.CTk):
             self.results_view.grid(row=0, column=0, sticky="nsew")
         elif view_name == "library":
             self.library_view.grid(row=0, column=0, sticky="nsew")
+        elif view_name == "publish":
+            self.publish_view.grid(row=0, column=0, sticky="nsew")
+        elif view_name == "keyword":
+            self.keyword_plan_view.grid(row=0, column=0, sticky="nsew")
         elif view_name == "loading":
             self.loading_overlay.grid(row=0, column=0, sticky="nsew")
         elif view_name == "settings":

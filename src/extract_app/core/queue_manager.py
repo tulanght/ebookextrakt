@@ -251,7 +251,7 @@ class ChapterQueueManager:
             engine = self.settings_manager.get("translation_engine", "cloud")
 
             start_time = time.time()
-            translation = self.translation_service.translate_text(
+            translation, usage = self.translation_service.translate_text(
                 item.content,
                 chunk_size=chunk_size,
                 delay=chunk_delay,
@@ -263,6 +263,16 @@ class ChapterQueueManager:
                     item.article_id, translation, "translated"
                 )
                 logger.info(f"Saved translation for article_id={item.article_id}")
+                
+                if usage:
+                    self.db_manager.log_api_usage(
+                        item.article_id, 
+                        'translation', 
+                        engine, 
+                        usage.get('in', 0), 
+                        usage.get('out', 0), 
+                        translation_time
+                    )
                 
                 update_dynamic_wpm(
                     self.settings_manager, engine,

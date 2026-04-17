@@ -59,6 +59,7 @@ class Fonts:
     NAV         = (FAMILY, 13)
     NAV_LABEL   = (FAMILY, 10, "bold")
     BUTTON      = (FAMILY, 13, "bold")
+    CODE        = ("Consolas", 12)
 
 
 # --- Spacing ---

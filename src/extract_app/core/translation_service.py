@@ -77,7 +77,7 @@ class TranslationService:
         chunk_size: int = None,
         delay: float = None,
         progress_callback: Callable[[int, int, str], None] = None,
-    ) -> Optional[str]:
+    ) -> Tuple[Optional[str], dict]:
         """Translate *text* from English to Vietnamese.
 
         Uses Cloud (Gemini) or Local (TranslateGemma) depending on settings.
@@ -103,15 +103,19 @@ class TranslationService:
         if progress_callback:
             progress_callback(0, total, f"Engine: {engine.upper()} | Chunks: {total}")
 
+        total_usage = {"in": 0, "out": 0}
+
         if engine == "local":
             for i, chunk in enumerate(chunks):
                 if progress_callback:
                     progress_callback(i, total, f"Đang dịch phần {i + 1}/{total} (Local)...")
-                res, err = self._translate_local_chunk(chunk)
+                res, usage, err = self._translate_local_chunk(chunk)
                 if err:
                     logger.error(f"[Local] Chunk {i} error: {err}")
-                    return None
+                    return None, total_usage
                 results[i] = res
+                total_usage["in"] += usage.get("in", 0)
+                total_usage["out"] += usage.get("out", 0)
                 if progress_callback:
                     progress_callback(i + 1, total, f"Đã dịch {i + 1}/{total} (Local)...")
         else:
@@ -124,32 +128,34 @@ class TranslationService:
                 for future in concurrent.futures.as_completed(future_to_idx):
                     idx = future_to_idx[future]
                     try:
-                        res, err = future.result()
+                        res, usage, err = future.result()
                         if err:
                             logger.error(f"[Cloud] Chunk {idx} error: {err}")
-                            return None
+                            return None, total_usage
                         results[idx] = res
+                        total_usage["in"] += usage.get("in", 0)
+                        total_usage["out"] += usage.get("out", 0)
                         completed += 1
                         if progress_callback:
                             progress_callback(completed, total, f"Đã dịch {completed}/{total} (Cloud)...")
                     except Exception as e:
                         logger.error(f"[Cloud] Execution error: {e}")
-                        return None
+                        return None, total_usage
 
         if progress_callback:
             progress_callback(total, total, "Hoàn thành!")
 
         full_translation = "\n\n".join(r for r in results if r)
-        return self.chunker.restore_anchors(full_translation, anchors_map)
+        return self.chunker.restore_anchors(full_translation, anchors_map), total_usage
 
     # ── Style transformation ──────────────────────────────────────────
 
     def transform_text(
-        self, archive_text: str, original_text: str, variant_type: str
-    ) -> Tuple[Optional[str], Optional[str]]:
+        self, archive_text: str, original_text: str, variant_type: str, article_template: str = ""
+    ) -> Tuple[Optional[str], Optional[dict], Optional[str]]:
         """Transform an archive translation into a Website or Facebook variant."""
         if not self.cloud_client.is_ready:
-            return None, "API Key chưa được cấu hình"
+            return None, None, "API Key chưa được cấu hình"
 
         gem_instructions = ""
         if variant_type == "facebook":
@@ -157,10 +163,10 @@ class TranslationService:
 
         temperature = 0.7 if variant_type == "facebook" else 0.4
         prompt = self.prompt_builder.build_transform_prompt(
-            archive_text, original_text, variant_type, gem_instructions
+            archive_text, original_text, variant_type, article_template, gem_instructions
         )
         if prompt is None:
-            return None, f"Unknown variant type: {variant_type}"
+            return None, None, f"Unknown variant type: {variant_type}"
 
         return self.cloud_client.transform(prompt, temperature=temperature)
 
@@ -168,31 +174,49 @@ class TranslationService:
 
     def extract_glossary_from_text(
         self, text: str, subject: str = "tổng hợp"
-    ) -> Tuple[Optional[List[dict]], Optional[str]]:
+    ) -> Tuple[Optional[List[dict]], Optional[dict], Optional[str]]:
         """Ask Gemini to extract domain-specific terms for the glossary."""
         return self.cloud_client.extract_glossary_json(text, subject)
 
+    # ── Content Brief Generation ──────────────────────────────────────
+
+    def generate_content_brief(
+        self, text: str
+    ) -> Tuple[Optional[dict], Optional[dict], Optional[str]]:
+        """Ask Gemini to generate an SEO Content Brief JSON from the provided text."""
+        return self.cloud_client.generate_content_brief_json(text)
+
+    # ── Keyword Cluster Generation ────────────────────────────────────
+
+    def generate_keyword_cluster(
+        self, pillar_keyword: str, context: str = ""
+    ) -> Tuple[Optional[List[dict]], Optional[dict], Optional[str]]:
+        """Ask Gemini to generate a Topic Cluster from a pillar keyword."""
+        return self.cloud_client.generate_keyword_cluster_json(pillar_keyword, context)
+
     # ── Internal helpers ──────────────────────────────────────────────
 
-    def _translate_cloud_chunk(self, text: str) -> Tuple[Optional[str], Optional[str]]:
+    def _translate_cloud_chunk(self, text: str) -> Tuple[Optional[str], Optional[dict], Optional[str]]:
         """Route a single chunk to the Cloud AI client."""
         glossary_str = self.glossary_manager.get_active_glossary_string()
         return self.cloud_client.translate_chunk(text, glossary_str)
 
-    def _translate_local_chunk(self, text: str) -> Tuple[Optional[str], Optional[str]]:
+    def _translate_local_chunk(self, text: str) -> Tuple[Optional[str], Optional[dict], Optional[str]]:
         """Route a single chunk to the Local LLM."""
         model_path = self.settings.get("local_model_path", "")
         n_gpu = self.settings.get("n_gpu_layers", -1)
 
+        empty_usage = {"in": 0, "out": 0}
+
         if not model_path:
-            return None, "Chưa chọn file Model Local (.gguf)"
+            return None, empty_usage, "Chưa chọn file Model Local (.gguf)"
 
         try:
             engine = self.local_service.engine
             if not engine.model_loaded or engine._model_path != model_path:
                 engine.load_model(model_path, n_gpu_layers=n_gpu)
         except Exception as e:
-            return None, f"Lỗi load model: {e}"
+            return None, empty_usage, f"Lỗi load model: {e}"
 
         style_name = self.settings.get("current_style", "standard")
         try:
@@ -205,10 +229,10 @@ class TranslationService:
         try:
             result = self.local_service.translate(text, system_instruction=instruction, glossary=glossary)
             if result:
-                return self.prompt_builder.clean_output(result), None
-            return None, "Local generation returned empty result."
+                return self.prompt_builder.clean_output(result), empty_usage, None
+            return None, empty_usage, "Local generation returned empty result."
         except Exception as e:
-            return None, f"Local Inference Error: {e}"
+            return None, empty_usage, f"Local Inference Error: {e}"
 
     def _load_gem_style_files(self) -> str:
         """Load Gem persona from scripts/gem_dich/*.md files."""

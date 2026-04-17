@@ -9,6 +9,10 @@ import customtkinter as ctk
 from tkinter import messagebox
 from typing import Callable, Any
 from .theme import Colors, Fonts, Spacing
+from .components.publish_pipeline_bar import PublishPipelineBar # New Import
+from .components.seo_panel import SeoPanel # New Import
+from .components.content_brief_panel import ContentBriefPanel # New Import
+
 
 
 class DualViewEditor(ctk.CTkToplevel):
@@ -16,11 +20,12 @@ class DualViewEditor(ctk.CTkToplevel):
     A side-by-side editor for Original Text vs Translation.
     Supports switching between Archive / Website / Facebook variants.
     """
-    def __init__(self, master, article_data: dict, on_save: Callable[[int, str], None], db_manager=None):
+    def __init__(self, master, article_data: dict, on_save: Callable[[int, str], None], db_manager=None, translation_service=None):
         super().__init__(master)
         self.article_data = article_data
         self.on_save = on_save
         self.db_manager = db_manager
+        self.translation_service = translation_service
         self.article_id = article_data['id']
         
         title = article_data.get('subtitle', 'Editor')
@@ -62,10 +67,51 @@ class DualViewEditor(ctk.CTkToplevel):
                 command=self._preview_webview
             )
             self.btn_preview.pack(side="right", padx=Spacing.SM)
+            
+        # SEO Button
+        self.btn_seo = ctk.CTkButton(
+            self.header, text="🔍 Cấu hình SEO", width=120, height=32,
+            fg_color=Colors.BG_CARD_HOVER, text_color=Colors.WARNING,
+            border_width=1, border_color=Colors.WARNING,
+            hover_color=Colors.BORDER, font=Fonts.BODY_BOLD,
+            corner_radius=Spacing.BUTTON_RADIUS,
+            command=self._open_seo_modal
+        )
+        self.btn_seo.pack(side="right", padx=Spacing.SM)
+
+        # Content Brief Button
+        if self.translation_service:
+            self.btn_brief = ctk.CTkButton(
+                self.header, text="✨ Content Brief", width=120, height=32,
+                fg_color=Colors.BG_CARD_HOVER, text_color=Colors.PRIMARY,
+                border_width=1, border_color=Colors.PRIMARY,
+                hover_color=Colors.BORDER, font=Fonts.BODY_BOLD,
+                corner_radius=Spacing.BUTTON_RADIUS,
+                command=self._open_brief_modal
+            )
+            self.btn_brief.pack(side="right", padx=Spacing.LG)
+            
+        # ── Pipeline Bar ──
+        # Determine step based on article data
+        # Research(0), Outline(1), Dịch thuật(2), Thumb(3), SEO(4)
+        step = 0
+        if article_data.get('focus_keyword'):
+            step = max(step, 1)
+        if article_data.get('translation_text'):
+            step = max(step, 2)
+        if article_data.get('publish_status') in ['ready', 'optimized', 'published']:
+             step = 4
+             
+        self.pipeline_bar = PublishPipelineBar(self, current_step=step)
+        self.pipeline_bar.grid(row=1, column=0, columnspan=2, sticky="ew", padx=Spacing.MD, pady=(0, Spacing.SM))
+        
+        # Adjust grid row weights
+        self.grid_rowconfigure(1, weight=0)
+        self.grid_rowconfigure(2, weight=1)
         
         # ── Left Panel: Original ──
         self.frame_orig = ctk.CTkFrame(self, fg_color=Colors.BG_CARD, corner_radius=Spacing.CARD_RADIUS)
-        self.frame_orig.grid(row=1, column=0, sticky="nsew", padx=(Spacing.MD, Spacing.XS), pady=Spacing.SM)
+        self.frame_orig.grid(row=2, column=0, sticky="nsew", padx=(Spacing.MD, Spacing.XS), pady=Spacing.SM)
         
         ctk.CTkLabel(
             self.frame_orig, text="📄 Văn bản gốc", 
@@ -85,7 +131,7 @@ class DualViewEditor(ctk.CTkToplevel):
         
         # ── Right Panel: Translation with variant tabs ──
         self.frame_trans = ctk.CTkFrame(self, fg_color=Colors.BG_CARD, corner_radius=Spacing.CARD_RADIUS)
-        self.frame_trans.grid(row=1, column=1, sticky="nsew", padx=(Spacing.XS, Spacing.MD), pady=Spacing.SM)
+        self.frame_trans.grid(row=2, column=1, sticky="nsew", padx=(Spacing.XS, Spacing.MD), pady=Spacing.SM)
         
         # Tab bar for variants
         tab_bar = ctk.CTkFrame(self.frame_trans, fg_color="transparent", height=36)
@@ -111,6 +157,39 @@ class DualViewEditor(ctk.CTkToplevel):
             )
             btn.pack(side="left", padx=2)
             self.variant_buttons[var_key] = btn
+            
+        # WP Config Bar (only shown for website variant)
+        self.wp_config_bar = ctk.CTkFrame(self.frame_trans, fg_color=Colors.BG_CARD_HOVER, height=36, corner_radius=Spacing.BUTTON_RADIUS)
+        
+        sm = self.translation_service.settings if self.translation_service else None
+        self.wp_sites = sm.get_wp_sites() if sm else []
+        site_names = [s.get("display_name", s.get("id")) for s in self.wp_sites] if self.wp_sites else ["No sites"]
+        
+        ctk.CTkLabel(self.wp_config_bar, text="Website:", font=Fonts.SMALL).pack(side="left", padx=(Spacing.SM, 2), pady=Spacing.XS)
+        self.site_var = tk.StringVar(value=site_names[0] if site_names else "")
+        self.site_menu = ctk.CTkOptionMenu(
+            self.wp_config_bar, variable=self.site_var, values=site_names, 
+            command=self._on_site_changed, width=120, height=24, font=Fonts.SMALL
+        )
+        self.site_menu.pack(side="left", padx=2, pady=Spacing.XS)
+        
+        ctk.CTkLabel(self.wp_config_bar, text="Loại bài:", font=Fonts.SMALL).pack(side="left", padx=(Spacing.MD, 2), pady=Spacing.XS)
+        self.tpl_var = tk.StringVar(value="")
+        self.tpl_menu = ctk.CTkOptionMenu(
+            self.wp_config_bar, variable=self.tpl_var, values=["general"], 
+            command=self._on_template_changed, width=120, height=24, font=Fonts.SMALL
+        )
+        self.tpl_menu.pack(side="left", padx=2, pady=Spacing.XS)
+        
+        self.btn_gen_web = ctk.CTkButton(
+            self.wp_config_bar, text="🪄 Viết bài Web", width=100, height=24,
+            fg_color=Colors.PRIMARY, hover_color=Colors.PRIMARY_HOVER,
+            command=self._generate_website_variant, font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS
+        )
+        self.btn_gen_web.pack(side="right", padx=Spacing.SM, pady=Spacing.XS)
+
+        # Initialize templates for the first site
+        self._on_site_changed(self.site_var.get())
         
         self.txt_trans = ctk.CTkTextbox(
             self.frame_trans, wrap="word",
@@ -124,7 +203,7 @@ class DualViewEditor(ctk.CTkToplevel):
         
         # ── Status Bar ──
         self.status_frame = ctk.CTkFrame(self, height=32, fg_color=Colors.BG_CARD, corner_radius=Spacing.BUTTON_RADIUS)
-        self.status_frame.grid(row=2, column=0, columnspan=2, sticky="ew", padx=Spacing.MD, pady=(0, Spacing.MD))
+        self.status_frame.grid(row=3, column=0, columnspan=2, sticky="ew", padx=Spacing.MD, pady=(0, Spacing.MD))
         
         self.lbl_orig_count = ctk.CTkLabel(
             self.status_frame, text="Gốc: 0 từ", 
@@ -169,6 +248,12 @@ class DualViewEditor(ctk.CTkToplevel):
         
         # Load the selected variant
         self.current_variant = variant_key
+        
+        if variant_key == "website":
+            self.wp_config_bar.pack(fill="x", padx=Spacing.SM, pady=(0, Spacing.XS), before=self.txt_trans)
+        else:
+            self.wp_config_bar.pack_forget()
+            
         text_map = {
             "archive": self.article_data.get('translation_text', ''),
             "website": self.article_data.get('website_text', ''),
@@ -187,6 +272,63 @@ class DualViewEditor(ctk.CTkToplevel):
         }
         self.txt_trans.configure(border_color=border_map.get(variant_key, Colors.BORDER))
         self._update_counts()
+
+    def _on_site_changed(self, value):
+        selected_site = next((s for s in self.wp_sites if s.get("display_name", s.get("id")) == value), None)
+        if selected_site:
+            self.article_data['target_site_id'] = selected_site.get("id")
+            templates = selected_site.get("article_templates", {})
+            tpl_keys = list(templates.keys()) if templates else ["general"]
+            self.tpl_menu.configure(values=tpl_keys)
+            self.tpl_var.set(tpl_keys[0] if tpl_keys else "")
+            self.article_data['article_template_type'] = tpl_keys[0] if tpl_keys else ""
+            
+    def _on_template_changed(self, value):
+        self.article_data['article_template_type'] = value
+
+    def _generate_website_variant(self):
+        if not self.translation_service or not self.translation_service.api_key:
+            messagebox.showwarning("Thiếu API Key", "Vui lòng nhập API Key trong phần Cài đặt trước.")
+            return
+            
+        archive_text = self.article_data.get('translation_text', '')
+        if not archive_text:
+            archive_text = self.txt_trans.get("1.0", "end-1c")
+            if not archive_text.strip():
+                messagebox.showwarning("Chưa có bản dịch", "Cần có bản dịch lưu trữ trước khi chuyển thể.")
+                return
+
+        original_text = self.article_data.get('content_text', '')
+        
+        # Determine the selected template content
+        selected_site = next((s for s in self.wp_sites if s.get("id") == self.article_data.get('target_site_id')), None)
+        template_content = ""
+        if selected_site:
+            templates = selected_site.get("article_templates", {})
+            template_content = templates.get(self.tpl_var.get(), "")
+
+        self.btn_gen_web.configure(state="disabled", text="⏳ Đang tạo...")
+        self.update()
+
+        import threading
+        def worker():
+            result, usage, err = self.translation_service.transform_text(
+                archive_text, original_text, 'website', template_content
+            )
+            self.after(0, lambda: self._on_generate_complete(result, err))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_generate_complete(self, str_result, err):
+        self.btn_gen_web.configure(state="normal", text="🪄 Viết bài Web")
+        if str_result:
+            self.txt_trans.delete("1.0", "end")
+            self.txt_trans.insert("1.0", str_result)
+            self.article_data['website_text'] = str_result
+            self._update_counts()
+            self._save_changes()
+        else:
+            messagebox.showerror("Lỗi", f"Tạo bài thất bại: {err}")
 
     def _update_counts(self, event=None):
         """Updates word counts for both text areas."""
@@ -273,3 +415,29 @@ class DualViewEditor(ctk.CTkToplevel):
     def _get_time_str(self):
         from datetime import datetime
         return datetime.now().strftime("%H:%M:%S")
+
+    def _open_seo_modal(self):
+        """Opens a modal dialog showing the SEO Panel."""
+        seo_win = ctk.CTkToplevel(self)
+        seo_win.title("Cấu hình SEO & Google SERP Preview")
+        seo_win.geometry("850x500")
+        seo_win.transient(self)
+        seo_win.grab_set()
+        seo_win.configure(fg_color=Colors.BG_APP)
+        
+        # pass settings manager from service
+        sm = self.translation_service.settings if self.translation_service else None
+        panel = SeoPanel(seo_win, self.db_manager, self.article_data, settings_manager=sm)
+        panel.pack(fill="both", expand=True, padx=Spacing.XL, pady=Spacing.XL)
+
+    def _open_brief_modal(self):
+        """Opens a modal dialog showing the Content Brief."""
+        brief_win = ctk.CTkToplevel(self)
+        brief_win.title("AI Content Brief")
+        brief_win.geometry("850x650")
+        brief_win.transient(self)
+        brief_win.grab_set()
+        brief_win.configure(fg_color=Colors.BG_APP)
+        
+        panel = ContentBriefPanel(brief_win, self.db_manager, self.translation_service, self.article_data)
+        panel.pack(fill="both", expand=True, padx=Spacing.LG, pady=Spacing.LG)
