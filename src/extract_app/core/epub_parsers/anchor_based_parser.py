@@ -7,10 +7,10 @@
 Parser for EPUB files with a complex, nested, anchor-based ToC structure.
 """
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from bs4 import BeautifulSoup, Tag
-from ebooklib import epub
+from ebooklib import epub, ITEM_DOCUMENT
 
 # Import shared helper functions
 from . import utils
@@ -27,6 +27,36 @@ def _get_all_anchor_ids(toc_items: List) -> set:
         elif isinstance(item, (list, tuple)):
             anchor_ids.update(_get_all_anchor_ids(item[1]))
     return anchor_ids
+
+
+def _resolve_doc_item(book: epub.EpubBook, file_href: str) -> Optional[epub.EpubHtml]:
+    """Resolve a doc item by href, with fallback for path-prefix mismatches.
+
+    ebooklib stores items with their full path (e.g. 'xhtml/chapter01.xhtml')
+    but EPUB ToC links often use only the bare filename ('chapter01.xhtml').
+    This function first tries an exact lookup, then falls back to a suffix
+    search so both structures are handled transparently.
+
+    Args:
+        book: The parsed EpubBook object.
+        file_href: The href string from the ToC link (may or may not have prefix).
+
+    Returns:
+        The matching EpubHtml item, or None if not found.
+    """
+    item = book.get_item_with_href(file_href)
+    if item is None and file_href:
+        # Fallback: search all document items by filename suffix.
+        # Handles cases where the ToC uses 'chapter01.xhtml' but the item
+        # is stored as 'xhtml/chapter01.xhtml' or 'OEBPS/chapter01.xhtml'.
+        for candidate in book.get_items_of_type(ITEM_DOCUMENT):
+            name = candidate.get_name()
+            if name == file_href or name.endswith('/' + file_href):
+                debug_logger.log(
+                    f"  [FALLBACK] Resolved '{file_href}' via suffix match -> '{name}'"
+                )
+                return candidate
+    return item
 
 
 # pylint: disable=too-many-locals
@@ -55,12 +85,12 @@ def _build_tree(
             file_href = href_parts[0]
             anchor_id = href_parts[1] if len(href_parts) > 1 else None
             
-            doc_item = book.get_item_with_href(file_href)
+            doc_item = _resolve_doc_item(book, file_href)
             content = []
             
             if doc_item:
                 try:
-                    soup = BeautifulSoup(doc_item.get_content(), 'xml')
+                    soup = BeautifulSoup(doc_item.get_content(), 'html.parser')
                     start_node = soup.find(id=anchor_id) if anchor_id else soup.body
                     
                     if start_node:

@@ -21,11 +21,44 @@ from bs4 import BeautifulSoup
 from ebooklib import epub
 
 # Import các parser chuyên biệt
-# Import các parser chuyên biệt
-from .epub_parsers import anchor_based_parser, simple_toc_parser
+from .epub_parsers import anchor_based_parser, simple_toc_parser, spine_parser
 # Import centralized utils
 from .epub_parsers.utils import resolve_image_path, save_image_to_temp
 from ..shared import debug_logger
+
+
+def _is_toc_usable(toc) -> bool:
+    """Check whether the EPUB ToC contains at least one usable entry.
+
+    A ToC is considered unusable when it is empty, or consists solely of
+    bare Link objects with no meaningful href (e.g. href='').
+
+    Args:
+        toc: The epub.Book.toc structure (list, tuple, or single Link).
+
+    Returns:
+        True if the ToC has at least one link with a non-empty href.
+    """
+    from ebooklib import epub as _epub
+
+    # Normalise: toc may be a bare Link rather than a list
+    items = toc if isinstance(toc, (list, tuple)) else [toc]
+
+    def has_usable_link(items_):
+        for item in items_:
+            if isinstance(item, _epub.Link):
+                if item.href and item.href.strip():
+                    return True
+            elif isinstance(item, (list, tuple)):
+                link = item[0]
+                children = item[1]
+                if isinstance(link, _epub.Link) and link.href and link.href.strip():
+                    return True
+                if has_usable_link(children):
+                    return True
+        return False
+
+    return has_usable_link(items)
 
 
 def parse_epub(filepath: str) -> Dict[str, Any]:
@@ -44,7 +77,40 @@ def parse_epub(filepath: str) -> Dict[str, Any]:
 
     try:
         debug_logger.log(f"Bắt đầu phân tích EPUB: {filepath}")
-        book = epub.read_epub(filepath)
+        try:
+            book = epub.read_epub(filepath)
+        except KeyError as key_err:
+            # Some EPUBs declare files in the OPF manifest that are missing from
+            # the zip archive (e.g. 'page_styles.css'). ebooklib's _load_manifest
+            # calls zipfile.ZipFile.read() for every manifest item and raises
+            # KeyError when a file is absent. There is no official 'tolerant' flag.
+            #
+            # Strategy: temporarily monkey-patch zipfile.ZipFile.read so that
+            # KeyError from missing entries returns empty bytes instead of raising.
+            # This lets ebooklib finish loading; the missing file just gets no content.
+            debug_logger.log(
+                f"[WARN] epub.read_epub raised KeyError ({key_err}). "
+                "Retrying with tolerant zip reader..."
+            )
+            import zipfile as _zf
+            _original_read = _zf.ZipFile.read
+
+            def _tolerant_read(self, name, pwd=None):
+                try:
+                    return _original_read(self, name, pwd)
+                except KeyError:
+                    debug_logger.log(f"  [TOLERANT] Skipping missing zip entry: {name!r}")
+                    return b""
+
+            try:
+                _zf.ZipFile.read = _tolerant_read
+                book = epub.read_epub(filepath)
+            except Exception as inner_e:
+                debug_logger.log(f"[ERROR] Tolerant load also failed: {inner_e}")
+                raise key_err from inner_e
+            finally:
+                _zf.ZipFile.read = _original_read  # Always restore original
+
 
         # --- Trích xuất Metadata & Ảnh bìa ---
         # 1. Extract Title
@@ -172,9 +238,15 @@ def parse_epub(filepath: str) -> Dict[str, Any]:
         results['metadata']['cover_image_path'] = cover_path
 
         # --- Logic Điều phối ---
-        is_nested = any(isinstance(item, (list, tuple)) for item in book.toc)
+        # Normalise toc to a list (some EPUBs expose a bare Link, not a list)
+        toc_list = book.toc if isinstance(book.toc, (list, tuple)) else [book.toc]
+        is_nested = any(isinstance(item, (list, tuple)) for item in toc_list)
+        toc_usable = _is_toc_usable(book.toc)
 
-        if is_nested:
+        if not toc_usable:
+            debug_logger.log("=> ToC is empty/broken. Using spine-based fallback parser.")
+            results['content'] = spine_parser.parse(book, temp_image_dir)
+        elif is_nested:
             debug_logger.log("=> Detected nested ToC. Using anchor-based parser.")
             results['content'] = anchor_based_parser.parse(book, temp_image_dir)
         else:
