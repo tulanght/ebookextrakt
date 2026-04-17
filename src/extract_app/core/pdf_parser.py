@@ -23,6 +23,36 @@ import fitz  # PyMuPDF
 from ..shared import debug_logger
 
 
+def _is_toc_sufficient(toc: List, page_count: int) -> bool:
+    """
+    Checks if the extracted ToC is sufficient for parsing.
+    Many PDFs have a single generic bookmark (e.g. 'Copyright') for the whole book.
+    """
+    if not toc:
+        return False
+    
+    # If a large book has very few bookmarks, they might just be generic placeholders
+    if page_count > 50 and len(toc) < 3:
+        debug_logger.log(f"ToC skipped: Too few items ({len(toc)}) for large PDF ({page_count} pages).")
+        return False
+        
+    # Check if page references are out of bounds (common in bad heuristics)
+    for item in toc:
+        # Assuming item has [level, title, page_number] format
+        if len(item) == 3 and item[2] > page_count + 10:
+             debug_logger.log(f"ToC skipped: Bookmark '{item[1]}' references out of bounds page {item[2]} > {page_count}.")
+             return False
+
+    # If there's only 1-2 bookmarks, check if they are just boilerplate
+    if len(toc) <= 2:
+        for item in toc:
+            title = item[1].strip().lower()
+            if any(kw in title for kw in ['copyright', 'title page', 'cover', 'half']):
+                debug_logger.log(f"ToC skipped: Boilerplate single bookmark '{item[1]}'.")
+                return False
+                
+    return True
+
 def _parse_toc_from_text(doc: fitz.Document) -> List:
     """
     Tries to heuristically parse a Table of Contents from the text of the
@@ -280,13 +310,19 @@ def parse_pdf(filepath: str) -> Dict[str, Any]:
         # Determine Table of Contents source
         toc = doc.get_toc()
         source = "Bookmarks"
-        if not toc:
+        
+        if not _is_toc_sufficient(toc, doc.page_count):
+            debug_logger.log("ToC bookmarks are insufficient or missing.")
             toc = _parse_toc_from_text(doc)
             source = "Text Heuristic"
-        if not toc:
+            
+        if not _is_toc_sufficient(toc, doc.page_count):
             debug_logger.log("Không tìm thấy Mục lục, sẽ chia theo từng trang.")
             source = "Per-Page Splitting"
-            toc = [[1, f"Trang {i+1}", i+1] for i in range(doc.page_count)]
+            # Instead of creating dummy per-page bookmarks, we'll create a single block
+            # and let the heuristic parser split it completely
+            toc = [[1, title, 1]]
+
         debug_logger.log(f"Đã xác định cấu trúc bằng phương pháp: {source}")
 
         content_tree = []
@@ -321,6 +357,12 @@ def parse_pdf(filepath: str) -> Dict[str, Any]:
                 sub_articles = [{'title': title, 'content': [], 'children': []}]
 
             if sub_articles:
+                # If we used Per-Page Splitting (fallback), all sub_articles should just be promoted
+                if source == "Per-Page Splitting":
+                    for article in sub_articles:
+                        content_tree.append(article)
+                    continue
+
                 if len(sub_articles) == 1:
                     node = sub_articles[0]
                 else:
