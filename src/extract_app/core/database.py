@@ -105,6 +105,125 @@ class DatabaseManager:
             )
         """)
 
+        # 6. API Usage Tracking (Publishing Pipeline)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS api_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                article_id INTEGER,
+                stage TEXT,
+                engine TEXT,
+                tokens_in INTEGER DEFAULT 0,
+                tokens_out INTEGER DEFAULT 0,
+                duration_seconds REAL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE
+            )
+        """)
+
+        # 7. Keyword Clusters (Publishing Pipeline)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS keyword_clusters (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # 8. Cluster Keywords (Publishing Pipeline)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS cluster_keywords (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cluster_id INTEGER,
+                keyword TEXT NOT NULL,
+                content_type TEXT,
+                is_pillar INTEGER DEFAULT 0,
+                word_count_target INTEGER DEFAULT 1500,
+                article_id INTEGER DEFAULT NULL,
+                publish_status TEXT DEFAULT 'pending',
+                keyword_variants TEXT,
+                internal_links TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(cluster_id) REFERENCES keyword_clusters(id) ON DELETE CASCADE,
+                FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE SET NULL
+            )
+        """)
+
+        # 9. Compositions
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS compositions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT,
+                focus_keyword TEXT,
+                research_notes TEXT,
+                composed_text TEXT,
+                website_text TEXT,
+                facebook_text TEXT,
+                word_count INTEGER DEFAULT 0,
+                compose_status TEXT DEFAULT 'draft',
+                seo_title TEXT,
+                meta_description TEXT,
+                target_site_id TEXT,
+                wp_post_id INTEGER,
+                wp_post_url TEXT,
+                published_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # 10. Composition Sources
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS composition_sources (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                composition_id INTEGER REFERENCES compositions(id) ON DELETE CASCADE,
+                article_id INTEGER REFERENCES articles(id) ON DELETE SET NULL,
+                order_index INTEGER
+            )
+        """)
+
+        # Add indexes for performance
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_usage_article_id ON api_usage(article_id)")
+
+        # 11. FTS5 Full-Text Search Index
+        cursor.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(
+                content_text,
+                subtitle,
+                content='articles',
+                content_rowid='id',
+                tokenize='porter unicode61'
+            )
+        """)
+
+        # Trigger: tự động sync khi INSERT article
+        cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS articles_fts_insert
+            AFTER INSERT ON articles BEGIN
+                INSERT INTO articles_fts(rowid, content_text, subtitle)
+                VALUES (new.id, new.content_text, new.subtitle);
+            END
+        """)
+
+        # Trigger: tự động sync khi UPDATE article
+        cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS articles_fts_update
+            AFTER UPDATE ON articles BEGIN
+                INSERT INTO articles_fts(articles_fts, rowid, content_text, subtitle)
+                VALUES ('delete', old.id, old.content_text, old.subtitle);
+                INSERT INTO articles_fts(rowid, content_text, subtitle)
+                VALUES (new.id, new.content_text, new.subtitle);
+            END
+        """)
+
+        # Trigger: tự động sync khi DELETE article
+        cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS articles_fts_delete
+            BEFORE DELETE ON articles BEGIN
+                INSERT INTO articles_fts(articles_fts, rowid, content_text, subtitle)
+                VALUES ('delete', old.id, old.content_text, old.subtitle);
+            END
+        """)
+
         conn.commit()
         conn.close()
         
@@ -129,6 +248,14 @@ class DatabaseManager:
                  conn.commit()
              except Exception as e:
                  print(f"[DB] Book Migration failed: {e}")
+
+        if 'site_category' not in book_cols:
+            print("[DB] Migration: Adding site_category to books table.")
+            try:
+                cursor.execute("ALTER TABLE books ADD COLUMN site_category TEXT DEFAULT NULL")
+                conn.commit()
+            except Exception as e:
+                 print(f"[DB] Book Migration (site_category) failed: {e}")
 
         if 'published_year' not in book_cols:
              print("[DB] Migration: Adding published_year to books table.")
@@ -191,6 +318,56 @@ class DatabaseManager:
                 print("[DB] Variant columns added.")
             except Exception as e:
                  print(f"[DB] Article Migration 4 failed: {e}")
+
+        # Migration v0.4.0: Publishing Pipeline columns
+        print("[DB] Migration: Checking publishing pipeline columns in articles.")
+        try:
+            new_cols = {
+                "publish_status": "TEXT DEFAULT 'translated'",
+                "wp_post_id": "INTEGER DEFAULT NULL",
+                "wp_post_url": "TEXT DEFAULT NULL",
+                "published_at": "TIMESTAMP DEFAULT NULL",
+                "seo_title": "TEXT DEFAULT NULL",
+                "meta_description": "TEXT DEFAULT NULL",
+                "focus_keyword": "TEXT DEFAULT NULL",
+                "content_brief": "TEXT DEFAULT NULL",
+                "brief_generated_at": "TIMESTAMP DEFAULT NULL",
+            }
+            cols_added = False
+            for col, typedef in new_cols.items():
+                if col not in art_cols:
+                    cursor.execute(f"ALTER TABLE articles ADD COLUMN {col} {typedef}")
+                    cols_added = True
+            
+            if cols_added:
+                # Update existing valid translated articles to have base status
+                cursor.execute("UPDATE articles SET publish_status = 'translated' WHERE status = 'translated' AND is_leaf = 1")
+                conn.commit()
+                print("[DB] Publishing columns added.")
+        except Exception as e:
+             print(f"[DB] Article Migration 5 failed: {e}")
+
+        # Migration: FTS5 index
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='articles_fts'")
+        if not cursor.fetchone():
+            print("[DB] Migration: Building FTS5 index (first time, may take a moment)...")
+            cursor.execute("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(
+                    content_text, subtitle,
+                    content='articles', content_rowid='id',
+                    tokenize='porter unicode61'
+                )
+            """)
+            cursor.execute("""
+                INSERT INTO articles_fts(rowid, content_text, subtitle)
+                SELECT id, COALESCE(content_text,''), COALESCE(subtitle,'')
+                FROM articles
+                WHERE is_leaf = 1
+            """)
+            conn.commit()
+            cursor.execute("SELECT COUNT(*) as c FROM articles_fts")
+            count = cursor.fetchone()['c']
+            print(f"[DB] FTS5 index built: {count:,} articles indexed.")
 
         conn.close()
 
@@ -522,7 +699,8 @@ class DatabaseManager:
                 cursor.execute("""
                     SELECT id, subtitle, status, translation_text, is_leaf, order_index, 
                            word_count, last_updated, translated_at,
-                           website_text, facebook_text
+                           website_text, facebook_text,
+                           publish_status, seo_title, meta_description, focus_keyword, content_brief
                     FROM articles 
                     WHERE chapter_id = ? 
                     ORDER BY order_index
@@ -545,5 +723,215 @@ class DatabaseManager:
             cursor = conn.cursor()
             cursor.execute(f"UPDATE articles SET {col} = ?, last_updated = CURRENT_TIMESTAMP WHERE id = ?", (text, article_id))
             conn.commit()
+        finally:
+            conn.close()
+
+    def log_api_usage(self, article_id: int, stage: str, engine: str, tokens_in: int, tokens_out: int, duration_seconds: float):
+        """Logs API usage info corresponding to an article operation."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO api_usage (article_id, stage, engine, tokens_in, tokens_out, duration_seconds)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (article_id, stage, engine, tokens_in, tokens_out, duration_seconds))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_article_api_usage(self, article_id: int) -> List[Dict]:
+        """Retrieves the API usage records for a given article."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, stage, engine, tokens_in, tokens_out, duration_seconds, created_at 
+                FROM api_usage 
+                WHERE article_id = ? 
+                ORDER BY created_at ASC
+            """, (article_id,))
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def update_article_seo(self, article_id: int, seo_title: str, meta_desc: str, keyword: str):
+        """Updates SEO metadata for an article."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE articles 
+                SET seo_title = ?, meta_description = ?, focus_keyword = ?, last_updated = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (seo_title, meta_desc, keyword, article_id))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def update_article_brief(self, article_id: int, brief_json: str):
+        """Updates the content_brief column for an article."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE articles 
+                SET content_brief = ?, brief_generated_at = CURRENT_TIMESTAMP, last_updated = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (brief_json, article_id))
+            conn.commit()
+        finally:
+            conn.close()
+
+    # ─────────────────────────────────────────────────────────────────
+    # Keyword Cluster CRUD (Phase 6)
+    # ─────────────────────────────────────────────────────────────────
+
+    def add_keyword_cluster(self, name: str, description: str = "") -> int:
+        """Adds a new Keyword Cluster."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO keyword_clusters (name, description)
+                VALUES (?, ?)
+            """, (name, description))
+            conn.commit()
+            return cursor.lastrowid
+        finally:
+            conn.close()
+
+    def get_keyword_clusters(self) -> List[Dict]:
+        """Gets all Keyword Clusters."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM keyword_clusters ORDER BY created_at DESC")
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def delete_keyword_cluster(self, cluster_id: int):
+        """Deletes a Keyword Cluster and cascades keywords."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA foreign_keys = ON")
+            cursor.execute("DELETE FROM keyword_clusters WHERE id = ?", (cluster_id,))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def add_cluster_keyword(self, cluster_id: int, keyword: str, content_type: str = "Bài cẩm nang", 
+                            is_pillar: bool = False, word_count_target: int = 1500) -> int:
+        """Adds a keyword to a cluster."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO cluster_keywords (cluster_id, keyword, content_type, is_pillar, word_count_target)
+                VALUES (?, ?, ?, ?, ?)
+            """, (cluster_id, keyword, content_type, 1 if is_pillar else 0, word_count_target))
+            conn.commit()
+            return cursor.lastrowid
+        finally:
+            conn.close()
+
+    def get_cluster_keywords(self, cluster_id: int) -> List[Dict]:
+        """Gets all keywords for a specific cluster."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM cluster_keywords WHERE cluster_id = ? ORDER BY is_pillar DESC, created_at ASC", (cluster_id,))
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def update_cluster_keyword_status(self, keyword_id: int, publish_status: str, article_id: int = None):
+        """Updates the status and linked article for a cluster keyword."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE cluster_keywords 
+                SET publish_status = ?, article_id = ?
+                WHERE id = ?
+            """, (publish_status, article_id, keyword_id))
+            conn.commit()
+        finally:
+            conn.close()
+
+    # ─────────────────────────────────────────────────────────────────
+    # FTS5 Search (Phase 7)
+    # ─────────────────────────────────────────────────────────────────
+
+    def search_content(
+        self,
+        query: str,
+        site_category: str = None,  # 'animal' | 'plant' | 'overlap' | None (all)
+        limit: int = 10,
+        min_words: int = 50
+    ) -> List[Dict]:
+        """
+        Full-text search trên toàn bộ articles.content_text.
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            
+            cat_filter = ""
+            params = [query]
+            if site_category:
+                cat_filter = "AND b.site_category = ?"
+                params.append(site_category)
+            params.append(limit)
+            
+            cursor.execute(f"""
+                SELECT 
+                    a.id            AS article_id,
+                    b.id            AS book_id,
+                    b.title         AS book_title,
+                    b.site_category AS site_category,
+                    c.title         AS chapter_title,
+                    a.subtitle      AS section_title,
+                    a.content_text  AS passage,
+                    snippet(articles_fts, 0, '<b>', '</b>', '...', 32) AS snippet,
+                    articles_fts.rank AS rank,
+                    a.word_count
+                FROM articles_fts
+                JOIN articles a ON a.id = articles_fts.rowid
+                JOIN chapters c ON c.id = a.chapter_id
+                JOIN books b ON b.id = c.book_id
+                WHERE articles_fts MATCH ?
+                  AND a.is_leaf = 1
+                  AND a.word_count >= {min_words}
+                  {cat_filter}
+                ORDER BY rank
+                LIMIT ?
+            """, params)
+            
+            results = []
+            for row in cursor.fetchall():
+                r = dict(row)
+                words = r['passage'].split()
+                if len(words) > 500:
+                    r['passage'] = ' '.join(words[:500]) + '...'
+                results.append(r)
+            
+            return results
+        finally:
+            conn.close()
+
+    def rebuild_fts_index(self) -> int:
+        """
+        Rebuild toàn bộ FTS5 index từ đầu.
+        Returns: số articles đã index.
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO articles_fts(articles_fts) VALUES('rebuild')")
+            conn.commit()
+            cursor.execute("SELECT COUNT(*) as c FROM articles_fts")
+            return cursor.fetchone()['c']
         finally:
             conn.close()
