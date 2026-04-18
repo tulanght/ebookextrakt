@@ -43,6 +43,7 @@ from .ui.loading_overlay import LoadingOverlay
 from .ui.library_view import LibraryView # New Import
 from .ui.publish_view import PublishView # New Import
 from .ui.keyword_plan_view import KeywordPlanView # New Import
+from .ui.search_view import SearchView
 from .ui.settings_view import SettingsView # New Import
 
 class MainWindow(ctk.CTk):
@@ -86,6 +87,9 @@ class MainWindow(ctk.CTk):
         self._create_main_layout()
         self._init_components()
         self._show_view("dashboard")
+        # Preload all lazy views in the background (300ms apart) so navigation feels instant
+        self.after(600, self._preload_background_views)
+
 
     def _create_main_layout(self):
         """Configure the main grid layout: Sidebar (Left) + Content (Right)."""
@@ -135,37 +139,20 @@ class MainWindow(ctk.CTk):
         # Let's wrap it in an `after` call to be safe from threads.
         debug_logger.register_listener(lambda msg: self.after(0, self.log_panel.write_log, msg))
 
-        # 6. Views
+        # 6. Lazy Views — only DashboardView + LoadingOverlay created at startup.
+        # All other views are created on first navigation to reduce startup time and handles.
         self.dashboard_view = DashboardView(self.content_area, on_import=self._on_select_file)
-        self.results_view = ResultsView(self.content_area, on_extract=self._on_extract_content)
-        self.library_view = LibraryView(
-            self.content_area, 
-            db_manager=self.db_manager,
-            settings_manager=self.settings_manager,
-            translation_service=self.translation_service
-        ) # Initialize Library View
-        self.publish_view = PublishView(
-            self.content_area,
-            db_manager=self.db_manager,
-            settings_manager=self.settings_manager,
-            translation_service=self.translation_service 
-        )
-        self.keyword_plan_view = KeywordPlanView(
-            self.content_area,
-            db_manager=self.db_manager,
-            settings_manager=self.settings_manager,
-            translation_service=self.translation_service
-        )
-        self.settings_view = SettingsView(
-            self.content_area, 
-            settings_manager=self.settings_manager, 
-            translation_service=self.translation_service
-        )
+        self.results_view   = None  # lazy
+        self.library_view   = None  # lazy
+        self.publish_view   = None  # lazy
+        self.keyword_plan_view = None  # lazy
+        self.search_view    = None  # lazy
+        self.settings_view  = None  # lazy
         
-        # 7. Loading Overlay (Replaces old loading_frame)
+        # 7. Loading Overlay
         self.loading_overlay = LoadingOverlay(self.content_area)
-        
-        # Initial Load of History
+
+        # Initial dashboard data
         self._update_dashboard_history()
 
     def _update_dashboard_history(self):
@@ -176,6 +163,23 @@ class MainWindow(ctk.CTk):
         # Update connection stats
         stats = self.db_manager.get_dashboard_stats()
         self.dashboard_view.update_stats(stats.get('books', 0), stats.get('translated_articles', 0))
+
+    def _preload_background_views(self):
+        """Pre-create all lazy views in the background using staggered after() calls.
+
+        Creates one view every 300ms while Dashboard is visible so that navigating
+        to any tab feels instant after the first ~2 seconds.
+        """
+        _lazy_views = [
+            "results",   # lightweight, fast
+            "settings",  # medium weight
+            "search",    # medium weight
+            "publish",   # heavier — loads articles
+            "keyword",   # heavier — loads clusters
+            "library",   # heaviest — loads book covers (last)
+        ]
+        for i, view_name in enumerate(_lazy_views):
+            self.after(i * 300, lambda n=view_name: self._get_view(n))
 
     def _on_open_recent_file(self, filepath: str):
         """Handle opening a file from history."""
@@ -207,46 +211,75 @@ class MainWindow(ctk.CTk):
                      self._show_view("dashboard")
 
         elif view_name == "library":
-            self.library_view.refresh_library() # Refresh content
-            self._show_view("library")
+            was_created = self.library_view is not None
+            self._show_view("library")  # lazy-create if needed
+            if was_created:
+                self.library_view.refresh_library()  # refresh only on re-visits
+
 
         elif view_name == "publish":
+            self._show_view("publish")  # lazy-create then refresh
             self.publish_view.refresh_list()
-            self._show_view("publish")
 
         elif view_name == "keyword":
+            self._show_view("keyword")  # lazy-create then refresh
             self.keyword_plan_view.refresh_clusters()
-            self._show_view("keyword")
-            
+
+        elif view_name == "search":
+            self._show_view("search")
+
         elif view_name == "settings":
             self._show_view("settings")
 
-    def _show_view(self, view_name: str):
-        """Switch the visible view in the content area."""
-        # Hide all
-        self.dashboard_view.grid_forget()
-        self.results_view.grid_forget()
-        self.library_view.grid_forget()
-        self.publish_view.grid_forget()
-        self.keyword_plan_view.grid_forget()
-        self.settings_view.grid_forget()
-        self.loading_overlay.grid_forget()
-        
-        # Show selected
+    def _get_view(self, view_name: str):
+        """Return the view widget, creating it lazily on first access."""
+        if view_name == "results":
+            if self.results_view is None:
+                self.results_view = ResultsView(self.content_area, on_extract=self._on_extract_content)
+            return self.results_view
+        if view_name == "library":
+            if self.library_view is None:
+                self.library_view = LibraryView(self.content_area, db_manager=self.db_manager, settings_manager=self.settings_manager, translation_service=self.translation_service)
+            return self.library_view
+        if view_name == "publish":
+            if self.publish_view is None:
+                self.publish_view = PublishView(self.content_area, db_manager=self.db_manager, settings_manager=self.settings_manager, translation_service=self.translation_service)
+            return self.publish_view
+        if view_name == "keyword":
+            if self.keyword_plan_view is None:
+                self.keyword_plan_view = KeywordPlanView(self.content_area, db_manager=self.db_manager, settings_manager=self.settings_manager, translation_service=self.translation_service)
+            return self.keyword_plan_view
+        if view_name == "search":
+            if self.search_view is None:
+                self.search_view = SearchView(self.content_area, db_manager=self.db_manager)
+            return self.search_view
+        if view_name == "settings":
+            if self.settings_view is None:
+                self.settings_view = SettingsView(self.content_area, settings_manager=self.settings_manager, translation_service=self.translation_service)
+            return self.settings_view
         if view_name == "dashboard":
-            self.dashboard_view.grid(row=0, column=0, sticky="nsew")
-        elif view_name == "results":
-            self.results_view.grid(row=0, column=0, sticky="nsew")
-        elif view_name == "library":
-            self.library_view.grid(row=0, column=0, sticky="nsew")
-        elif view_name == "publish":
-            self.publish_view.grid(row=0, column=0, sticky="nsew")
-        elif view_name == "keyword":
-            self.keyword_plan_view.grid(row=0, column=0, sticky="nsew")
-        elif view_name == "loading":
-            self.loading_overlay.grid(row=0, column=0, sticky="nsew")
-        elif view_name == "settings":
-            self.settings_view.grid(row=0, column=0, sticky="nsew")
+            return self.dashboard_view
+        if view_name == "loading":
+            return self.loading_overlay
+        return None
+
+    def _show_view(self, view_name: str):
+        """Switch the visible view in the content area (lazy-load on first access)."""
+        # Always-present views
+        self.dashboard_view.grid_forget()
+        self.loading_overlay.grid_forget()
+
+        # Hide lazy views only if already created
+        for attr in ("results_view", "library_view", "publish_view",
+                     "keyword_plan_view", "search_view", "settings_view"):
+            v = getattr(self, attr)
+            if v is not None:
+                v.grid_forget()
+
+        # Show target (creates it if needed)
+        target = self._get_view(view_name)
+        if target is not None:
+            target.grid(row=0, column=0, sticky="nsew")
 
     def _on_select_file(self):
         """Handle file selection from Dashboard."""

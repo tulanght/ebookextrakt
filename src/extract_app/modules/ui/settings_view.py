@@ -139,10 +139,9 @@ class SettingsView(ctk.CTkFrame):
             "gemini-1.5-flash"
         ]
         
-        self.cloud_model_menu = ctk.CTkOptionMenu(
-            model_select_frame, variable=self.cloud_model_var, values=cloud_models, width=200,
-            fg_color=Colors.BG_INPUT, button_color=Colors.BORDER, button_hover_color=Colors.PRIMARY,
-            text_color=Colors.TEXT_PRIMARY, dropdown_fg_color=Colors.BG_CARD, dropdown_text_color=Colors.TEXT_PRIMARY
+        self.cloud_model_menu = ctk.CTkEntry(
+            model_select_frame, textvariable=self.cloud_model_var, width=250,
+            fg_color=Colors.BG_INPUT, border_color=Colors.BORDER, text_color=Colors.TEXT_PRIMARY, height=32
         )
         self.cloud_model_menu.pack(side="left", padx=Spacing.SM)
         
@@ -185,10 +184,8 @@ class SettingsView(ctk.CTkFrame):
         self.style_var = tk.StringVar(value=self.settings_manager.get("current_style", "standard"))
         
         styles = ["standard", "facebook_gem", "website_seo", "literary", "casual"] 
-        self.style_menu = ctk.CTkOptionMenu(
-            config_frame, variable=self.style_var, values=styles, width=150,
-            fg_color=Colors.BG_INPUT, button_color=Colors.BORDER, button_hover_color=Colors.PRIMARY,
-            text_color=Colors.TEXT_PRIMARY, dropdown_fg_color=Colors.BG_CARD, dropdown_text_color=Colors.TEXT_PRIMARY
+        self.style_menu = ctk.CTkSegmentedButton(
+            config_frame, variable=self.style_var, values=styles
         )
         self.style_menu.pack(side="left", padx=Spacing.SM)
         
@@ -267,13 +264,13 @@ class SettingsView(ctk.CTkFrame):
         theme_frame = ctk.CTkFrame(parent, fg_color="transparent")
         theme_frame.pack(fill="x", padx=Spacing.LG, pady=Spacing.SM)
         ctk.CTkLabel(theme_frame, text="Chế độ màu:", width=100, anchor="w", font=Fonts.BODY, text_color=Colors.TEXT_PRIMARY).pack(side="left")
-        self.theme_menu = ctk.CTkOptionMenu(
-            theme_frame, values=["Dark", "Light", "System"], command=self._change_theme,
-            fg_color=Colors.BG_INPUT, button_color=Colors.BORDER, button_hover_color=Colors.PRIMARY,
-            text_color=Colors.TEXT_PRIMARY, dropdown_fg_color=Colors.BG_CARD, dropdown_text_color=Colors.TEXT_PRIMARY
+        self.theme_var = tk.StringVar(value=ctk.get_appearance_mode())
+        self.theme_menu = ctk.CTkSegmentedButton(
+            theme_frame, variable=self.theme_var,
+            values=["Dark", "Light", "System"],
+            command=self._change_theme
         )
         self.theme_menu.pack(side="left")
-        self.theme_menu.set(ctk.get_appearance_mode())
 
     def _update_ui_state(self):
         engine = self.engine_var.get()

@@ -4,6 +4,7 @@ FTS5 Search CLI
 Allows searching through extracted books via the FTS5 index.
 """
 import sys
+sys.stdout.reconfigure(encoding='utf-8')
 import argparse
 import json
 from pathlib import Path

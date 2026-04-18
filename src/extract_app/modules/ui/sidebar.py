@@ -21,6 +21,7 @@ class SidebarFrame(ctk.CTkFrame):
         ("📚", "Thư viện",   "library"),
         ("🚀", "Publishing", "publish"),
         ("🎯", "Từ Khoá",    "keyword"),
+        ("🔍", "Tìm Kiếm",   "search"),
         ("⚙️", "Cài đặt",   "settings"),
     ]
 

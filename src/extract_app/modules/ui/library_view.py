@@ -62,31 +62,26 @@ class BookCard(ctk.CTkFrame):
         
         # ===== PACK LAYOUT (top to bottom) =====
         
-        # 1. Cover Image
-        self.cover_image = None
+        # 1. Cover Image — start with placeholder, load image asynchronously
         cover_w, cover_h = 200, 220
-        if cover_path and Path(cover_path).exists():
-            try:
-                img = Image.open(cover_path)
-                img = ImageOps.fit(img, (cover_w * 2, cover_h * 2), method=Image.LANCZOS)
-                self.cover_image = ctk.CTkImage(light_image=img, dark_image=img, size=(cover_w, cover_h))
-            except Exception as e:
-                print(f"Error loading cover: {e}")
-        
-        if self.cover_image:
-            self.lbl_cover = ctk.CTkLabel(self, text="", image=self.cover_image, width=cover_w, height=cover_h)
-        else:
-            self.lbl_cover = ctk.CTkLabel(
-                self, text="📚\nNo Cover", 
-                font=Fonts.H3,
-                fg_color=Colors.BG_APP,
-                text_color=Colors.TEXT_MUTED,
-                corner_radius=10,
-                width=cover_w, height=cover_h
-            )
-            
+        self.lbl_cover = ctk.CTkLabel(
+            self, text="📚", 
+            font=Fonts.H3,
+            fg_color=Colors.BG_APP,
+            text_color=Colors.TEXT_MUTED,
+            corner_radius=10,
+            width=cover_w, height=cover_h
+        )
         self.lbl_cover.pack(side="top", pady=(8, 4), padx=10)
         self._bind_click(self.lbl_cover)
+
+        # Load cover async to avoid blocking main thread
+        if cover_path and Path(cover_path).exists():
+            threading.Thread(
+                target=self._load_cover_async,
+                args=(cover_path, cover_w, cover_h),
+                daemon=True
+            ).start()
         
         # 2. Title (truncated, max 2 lines)
         display_title = full_title
@@ -176,7 +171,20 @@ class BookCard(ctk.CTkFrame):
         self.btn_delete.bind("<Enter>", self._on_enter)
         self.btn_delete.bind("<Leave>", self._on_leave)
 
+    def _load_cover_async(self, cover_path: str, cover_w: int, cover_h: int):
+        """Load book cover from disk in background thread, then update label on main thread."""
+        try:
+            img = Image.open(cover_path)
+            img = ImageOps.fit(img, (cover_w * 2, cover_h * 2), method=Image.LANCZOS)
+            ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(cover_w, cover_h))
+            # Must update widget on main thread via after()
+            if self.winfo_exists():
+                self.after(0, lambda: self.lbl_cover.configure(image=ctk_img, text=""))
+        except Exception:
+            pass  # keep placeholder on error
+
     def _bind_click(self, widget):
+
         widget.bind("<Button-1>", self._handle_click_event)
         widget.bind("<Enter>", self._on_enter)
         widget.bind("<Leave>", self._on_leave)
@@ -268,46 +276,66 @@ class LibraryView(ctk.CTkFrame):
         self.scroll_frame.grid(row=1, column=0, sticky="nsew")
         self.scroll_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
 
+        self._page = 1  # current page (how many PAGE_SIZE blocks shown)
+        self.PAGE_SIZE = 20  # books per page
+
         self.refresh_library()
 
     def refresh_library(self):
+        self._page = 1  # reset pagination
         query = self.search_var.get()
         if query:
             self.books = self.db_manager.search_books(query)
         else:
             self.books = self.db_manager.get_all_books()
-            
+
         self._render_books()
 
     def _on_search_change(self, *args):
         self.refresh_library()
 
     def _render_books(self):
-        # Clear existing
+        """Render paginated book grid — only PAGE_SIZE * _page books at a time."""
         for widget in self.scroll_frame.winfo_children():
             widget.destroy()
-            
+
         if not self.books:
-            lbl = ctk.CTkLabel(
+            ctk.CTkLabel(
                 self.scroll_frame, text="Không tìm thấy sách nào trong thư viện.",
                 text_color=Colors.TEXT_MUTED, font=Fonts.BODY
-            )
-            lbl.pack(pady=50)
+            ).pack(pady=50)
             return
 
-        # Render Grid (4 columns)
         cols = 4
-        for i, book in enumerate(self.books):
-            row = i // cols
-            col = i % cols
-            
+        visible = self.books[:self._page * self.PAGE_SIZE]
+        for i, book in enumerate(visible):
+            row_ = i // cols
+            col_ = i % cols
             card = BookCard(
-                self.scroll_frame, 
-                book_data=book, 
+                self.scroll_frame,
+                book_data=book,
                 on_click=self._open_book_detail,
                 on_delete=self._delete_book
             )
-            card.grid(row=row, column=col, sticky="n", padx=Spacing.MD, pady=Spacing.MD)
+            card.grid(row=row_, column=col_, sticky="n", padx=Spacing.MD, pady=Spacing.MD)
+
+        # Load More button if there are more books
+        if len(self.books) > self._page * self.PAGE_SIZE:
+            total_remaining = len(self.books) - self._page * self.PAGE_SIZE
+            last_row = (len(visible) - 1) // cols + 1
+            ctk.CTkButton(
+                self.scroll_frame,
+                text=f"⬇ Tải thêm ({total_remaining} sách còn lại)",
+                fg_color=Colors.BG_CARD, border_width=1, border_color=Colors.BORDER,
+                text_color=Colors.TEXT_PRIMARY, hover_color=Colors.BG_CARD_HOVER,
+                font=Fonts.BODY, corner_radius=Spacing.BUTTON_RADIUS,
+                command=self._load_more
+            ).grid(row=last_row, column=0, columnspan=4, pady=Spacing.XL, padx=Spacing.XL, sticky="ew")
+
+    def _load_more(self):
+        """Increment page and re-render to show more books."""
+        self._page += 1
+        self._render_books()
 
     def _delete_book(self, book_id: int):
         if ask_yes_no(self, "Xác nhận xóa", "Bạn có chắc muốn xóa sách này khỏi thư viện?\n(File gốc vẫn được giữ nguyên)", is_danger=True):

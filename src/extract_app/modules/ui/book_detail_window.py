@@ -166,7 +166,7 @@ class BookDetailWindow(ctk.CTkToplevel):
         ).pack(side="left", padx=Spacing.MD, pady=Spacing.SM)
 
         self.export_format_var = tk.StringVar(value="Markdown")
-        ctk.CTkOptionMenu(
+        ctk.CTkComboBox(
             export_bar, variable=self.export_format_var,
             values=["Markdown", "TXT", "Chỉ bản dịch"],
             width=130,

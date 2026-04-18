@@ -167,7 +167,7 @@ class DualViewEditor(ctk.CTkToplevel):
         
         ctk.CTkLabel(self.wp_config_bar, text="Website:", font=Fonts.SMALL).pack(side="left", padx=(Spacing.SM, 2), pady=Spacing.XS)
         self.site_var = tk.StringVar(value=site_names[0] if site_names else "")
-        self.site_menu = ctk.CTkOptionMenu(
+        self.site_menu = ctk.CTkComboBox(
             self.wp_config_bar, variable=self.site_var, values=site_names, 
             command=self._on_site_changed, width=120, height=24, font=Fonts.SMALL
         )
@@ -175,7 +175,7 @@ class DualViewEditor(ctk.CTkToplevel):
         
         ctk.CTkLabel(self.wp_config_bar, text="Loại bài:", font=Fonts.SMALL).pack(side="left", padx=(Spacing.MD, 2), pady=Spacing.XS)
         self.tpl_var = tk.StringVar(value="")
-        self.tpl_menu = ctk.CTkOptionMenu(
+        self.tpl_menu = ctk.CTkComboBox(
             self.wp_config_bar, variable=self.tpl_var, values=["general"], 
             command=self._on_template_changed, width=120, height=24, font=Fonts.SMALL
         )

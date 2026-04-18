@@ -145,7 +145,7 @@ class SettingsWindow(ctk.CTkToplevel):
             "gemini-1.5-flash"
         ]
         
-        self.cloud_model_menu = ctk.CTkOptionMenu(
+        self.cloud_model_menu = ctk.CTkComboBox(
             model_select_frame, variable=self.cloud_model_var, values=cloud_models, width=200,
             fg_color=Colors.BG_INPUT, button_color=Colors.BORDER, button_hover_color=Colors.PRIMARY,
             text_color=Colors.TEXT_PRIMARY, dropdown_fg_color=Colors.BG_CARD, dropdown_text_color=Colors.TEXT_PRIMARY
@@ -190,7 +190,7 @@ class SettingsWindow(ctk.CTkToplevel):
         ctk.CTkLabel(config_frame, text="Văn phong:", width=80, anchor="w", font=Fonts.BODY, text_color=Colors.TEXT_PRIMARY).pack(side="left")
         self.style_var = tk.StringVar(value=self.settings_manager.get("current_style", "standard"))
         styles = ["standard", "literary", "technical", "casual", "facebook_gem"]
-        self.style_menu = ctk.CTkOptionMenu(
+        self.style_menu = ctk.CTkComboBox(
             config_frame, variable=self.style_var, values=styles, width=120,
             fg_color=Colors.BG_INPUT, button_color=Colors.BORDER, button_hover_color=Colors.PRIMARY,
             text_color=Colors.TEXT_PRIMARY, dropdown_fg_color=Colors.BG_CARD, dropdown_text_color=Colors.TEXT_PRIMARY
