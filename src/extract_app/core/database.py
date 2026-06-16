@@ -662,6 +662,20 @@ class DatabaseManager:
         finally:
             conn.close()
 
+    def reset_book_translations(self, book_id: int):
+        """Resets the status and translation text of all articles in a book to 'new' and NULL."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE articles 
+                SET translation_text = NULL, status = 'new', translated_at = NULL
+                WHERE chapter_id IN (SELECT id FROM chapters WHERE book_id = ?)
+            """, (book_id,))
+            conn.commit()
+        finally:
+            conn.close()
+
     def get_dashboard_stats(self) -> Dict[str, int]:
         """Returns total books and total translated articles."""
         conn = self._get_connection()
@@ -972,3 +986,283 @@ class DatabaseManager:
             return cursor.fetchone()['c']
         finally:
             conn.close()
+
+    def fts_search_raw(
+        self,
+        fts_query: str,
+        site_category: str = None,
+        limit: int = 100,
+        min_words: int = 80,
+        exclude_article_ids: List[int] = None,
+        book_category: str = None
+    ) -> List[Dict]:
+        """
+        Raw FTS5 search with optional article exclusion.
+        book_category: lọc theo cột books.category (genre/scope, vd 'concept') —
+            khác site_category (domain animal/plant). Dùng cho bài khái niệm chỉ tra
+            sách sinh thái đại cương, tránh nhiễu chuyên khảo loài.
+        Returns: article_id, book_id, book_title, site_category,
+                 chapter_title, section_title, passage, rank, word_count
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            params = [fts_query]
+
+            where_extra = ""
+            if site_category:
+                where_extra += " AND b.site_category = ?"
+                params.append(site_category)
+
+            if book_category:
+                where_extra += " AND b.category = ?"
+                params.append(book_category)
+
+            if exclude_article_ids:
+                placeholders = ','.join('?' * len(exclude_article_ids))
+                where_extra += f" AND a.id NOT IN ({placeholders})"
+                params.extend(exclude_article_ids)
+
+            params.append(limit)
+
+            cursor.execute(f"""
+                SELECT
+                    a.id AS article_id,
+                    b.id AS book_id,
+                    b.title AS book_title,
+                    b.site_category AS site_category,
+                    c.title AS chapter_title,
+                    a.subtitle AS section_title,
+                    a.content_text AS passage,
+                    articles_fts.rank AS rank,
+                    a.word_count
+                FROM articles_fts
+                JOIN articles a ON a.id = articles_fts.rowid
+                JOIN chapters c ON c.id = a.chapter_id
+                JOIN books b ON b.id = c.book_id
+                WHERE articles_fts MATCH ?
+                  AND a.is_leaf = 1
+                  AND a.word_count >= {min_words}
+                  AND a.word_count <= 3000
+                  AND LOWER(COALESCE(a.subtitle, '')) NOT LIKE '%literature cited%'
+                  AND LOWER(COALESCE(a.subtitle, '')) NOT LIKE '%references%'
+                  AND LOWER(COALESCE(a.subtitle, '')) NOT LIKE '%bibliography%'
+                  AND LOWER(COALESCE(a.subtitle, '')) NOT LIKE '%glossary%'
+                  AND LOWER(COALESCE(a.subtitle, '')) NOT LIKE '%appendix%'
+                  AND LOWER(COALESCE(a.subtitle, '')) NOT LIKE '% index'
+                  AND LOWER(COALESCE(a.subtitle, '')) NOT LIKE 'index %'
+                  {where_extra}
+                ORDER BY rank
+                LIMIT ?
+            """, params)
+
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+        # Generate bash script
+    def qmd_search(
+        self,
+        query: str,
+        site_category: str = None,
+        collection: str = 'ebooks-all',
+        limit: int = 100,
+        min_words: int = 80,
+        exclude_article_ids: List[int] = None
+    ) -> List[Dict]:
+        """
+        QMD hybrid search (BM25+vector+rerank). Same return shape as fts_search_raw().
+        Requires: qmd CLI installed (bun link), index built, JINA_API_KEY set.
+        """
+        import subprocess
+        import os
+        env = os.environ.copy()
+        env['QMD_EMBED_PROVIDER'] = 'jina'
+        env['JINA_API_KEY'] = 'jina_ed71ffbdfe574f1db4bde55234c89d2f8JUlgQYMwmb6n7SdAucVibHQrQO3'
+        env['QMD_JINA_MODEL'] = 'jina-embeddings-v5-text-small'
+        env['QMD_JINA_DIMENSION'] = '1024'
+
+        cwd = r"C:\Users\AORUS\Documents\Projects\_research\qmd"
+        bun_exe = r"C:\Users\AORUS\.bun\bin\bun.exe"
+
+        # Vector search aligns better with English corpus when query is English-only.
+        # Strip Vietnamese/diacritic terms — keep ASCII words (English + scientific names).
+        import re as _re
+        _ascii_terms = [w for w in query.split() if w.isascii() and len(w) > 2]
+        vsearch_query = ' '.join(_ascii_terms) if _ascii_terms else query
+        print(f"     [vsearch] query: '{vsearch_query}'")
+
+        cmd = [bun_exe, 'run', 'qmd', 'vsearch', vsearch_query, '--json', '-n', str(limit * 2), '--no-rerank']
+        if collection:
+            cmd += ['-c', collection]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', shell=True, env=env, cwd=cwd)
+
+        if result.returncode != 0:
+            print(f"[QMD Error] {result.stderr}")
+            return []
+
+        try:
+            qmd_results = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            print(f"[QMD Error] Failed to parse output: {result.stdout[:200]}")
+            return []
+
+        if not qmd_results:
+            return []
+
+        import re
+
+        def slugify(text: str) -> str:
+            return re.sub(r'[^a-z0-9]+', '-', str(text).lower()).strip('-')
+
+        def extract_folder_slug(qmd_file: str) -> str:
+            norm = qmd_file.replace('\\', '/')
+            if 'qmd://' in norm:
+                try:
+                    after = norm.split('://')[1]  # collection/folder/...
+                    return after.split('/', 1)[1].split('/')[0]
+                except IndexError:
+                    return ''
+            parts = norm.split('/Extracted-EBOOKS/')
+            if len(parts) > 1:
+                return slugify(parts[1].split('/')[0])
+            return ''
+
+        # Load all books from DB to match QMD folder slugs → book metadata + passages
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            query_sql = """
+                SELECT
+                    a.id AS article_id,
+                    b.id AS book_id,
+                    b.title AS book_title,
+                    b.site_category AS site_category,
+                    c.title AS chapter_title,
+                    a.subtitle AS section_title,
+                    a.content_text AS passage,
+                    a.word_count
+                FROM articles a
+                JOIN chapters c ON c.id = a.chapter_id
+                JOIN books b ON b.id = c.book_id
+                WHERE a.is_leaf = 1
+                  AND a.word_count >= {min_words}
+                  AND a.word_count <= 5000
+            """.format(min_words=min_words)
+            params = []
+            if site_category:
+                query_sql += " AND b.site_category = ?"
+                params.append(site_category)
+            if exclude_article_ids:
+                ex_ph = ','.join('?' * len(exclude_article_ids))
+                query_sql += f" AND a.id NOT IN ({ex_ph})"
+                params.extend(exclude_article_ids)
+            cursor.execute(query_sql, params)
+            db_articles = [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+        # Index DB articles by book_title_slug for fast lookup
+        db_by_book_slug: dict = {}
+        for art in db_articles:
+            bslug = slugify(art['book_title'])
+            db_by_book_slug.setdefault(bslug, []).append(art)
+
+        # Find which book_ids are relevant (via QMD folder slug matching)
+        relevant_book_ids: set = set()
+        qmd_book_score: dict = {}  # book_id → best QMD score
+        for qres in qmd_results:
+            score = qres.get('score', 0.0)
+            if score < 0.25:  # lowered from 0.3 — mixed-language queries score slightly lower
+                continue
+            folder_slug = extract_folder_slug(qres.get('file', ''))
+            candidates = db_by_book_slug.get(folder_slug, [])
+            for art in candidates:
+                bid = art['book_id']
+                relevant_book_ids.add(bid)
+                if score > qmd_book_score.get(bid, 0):
+                    qmd_book_score[bid] = score
+
+        if not relevant_book_ids:
+            return []
+
+        # Use FTS5 to find keyword-relevant passages within the QMD-identified books.
+        # Ebooks are in English — use ASCII-only words. AND for core terms, OR for extras.
+        clean = re.sub(r'[^\w\s]', ' ', query)
+        ascii_words = [w for w in clean.split() if w.isascii() and len(w) > 2]
+        if len(ascii_words) >= 2:
+            # Core 2-term AND constraint (must co-occur in passage) + OR for remaining terms
+            core = f'"{ascii_words[0]}" AND "{ascii_words[1]}"'
+            extras = [f'"{w}"' for w in ascii_words[2:]]
+            fts_query = f'({core})' + (' OR ' + ' OR '.join(extras) if extras else '')
+        else:
+            fts_query = ' OR '.join(f'"{w}"' for w in ascii_words) if ascii_words else '"the"'
+
+        conn2 = self._get_connection()
+        try:
+            cur2 = conn2.cursor()
+            book_ph = ','.join('?' * len(relevant_book_ids))
+            params2: list = []
+            ex_clause = ''
+            if exclude_article_ids:
+                ex_ph = ','.join('?' * len(exclude_article_ids))
+                ex_clause = f" AND a.id NOT IN ({ex_ph})"
+                params2.extend(exclude_article_ids)
+
+            fts_sql = f"""
+                SELECT
+                    a.id AS article_id,
+                    b.id AS book_id,
+                    b.title AS book_title,
+                    b.site_category AS site_category,
+                    c.title AS chapter_title,
+                    a.subtitle AS section_title,
+                    a.content_text AS passage,
+                    a.word_count,
+                    rank AS fts_rank
+                FROM articles_fts
+                JOIN articles a ON articles_fts.rowid = a.id
+                JOIN chapters c ON c.id = a.chapter_id
+                JOIN books b ON b.id = c.book_id
+                WHERE articles_fts MATCH ?
+                  AND b.id IN ({book_ph})
+                  AND a.is_leaf = 1
+                  AND a.word_count >= {min_words}
+                  AND a.word_count <= 5000
+                  {ex_clause}
+                ORDER BY rank
+                LIMIT {limit * 3}
+            """
+            all_params = [fts_query] + list(relevant_book_ids) + params2
+            try:
+                cur2.execute(fts_sql, all_params)
+                fts_articles = [dict(row) for row in cur2.fetchall()]
+            except Exception:
+                # FTS syntax error fallback — return all articles from relevant books sorted by word_count desc
+                fts_articles = [
+                    art for art in db_articles
+                    if art['book_id'] in relevant_book_ids
+                ]
+                fts_articles.sort(key=lambda a: -a['word_count'])
+        finally:
+            conn2.close()
+
+        # Deduplicate by article_id, inject book QMD score as rank
+        seen_article_ids: set = set()
+        final_results = []
+        for art in fts_articles:
+            aid = art['article_id']
+            if aid in seen_article_ids:
+                continue
+            if exclude_article_ids and aid in exclude_article_ids:
+                continue
+            seen_article_ids.add(aid)
+            mapped = art.copy()
+            mapped['rank'] = -(qmd_book_score.get(art['book_id'], 0) * 20.0)
+            mapped['_query_matched'] = query
+            final_results.append(mapped)
+            if len(final_results) >= limit:
+                break
+
+        return final_results
