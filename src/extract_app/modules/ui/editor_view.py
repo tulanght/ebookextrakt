@@ -6,12 +6,10 @@
 # --------------------------------------------------------------------------------
 
 import customtkinter as ctk
+import tkinter as tk
 from tkinter import messagebox
 from typing import Callable, Any
 from .theme import Colors, Fonts, Spacing
-from .components.publish_pipeline_bar import PublishPipelineBar # New Import
-from .components.seo_panel import SeoPanel # New Import
-from .components.content_brief_panel import ContentBriefPanel # New Import
 
 
 
@@ -68,42 +66,7 @@ class DualViewEditor(ctk.CTkToplevel):
             )
             self.btn_preview.pack(side="right", padx=Spacing.SM)
             
-        # SEO Button
-        self.btn_seo = ctk.CTkButton(
-            self.header, text="🔍 Cấu hình SEO", width=120, height=32,
-            fg_color=Colors.BG_CARD_HOVER, text_color=Colors.WARNING,
-            border_width=1, border_color=Colors.WARNING,
-            hover_color=Colors.BORDER, font=Fonts.BODY_BOLD,
-            corner_radius=Spacing.BUTTON_RADIUS,
-            command=self._open_seo_modal
-        )
-        self.btn_seo.pack(side="right", padx=Spacing.SM)
 
-        # Content Brief Button
-        if self.translation_service:
-            self.btn_brief = ctk.CTkButton(
-                self.header, text="✨ Content Brief", width=120, height=32,
-                fg_color=Colors.BG_CARD_HOVER, text_color=Colors.PRIMARY,
-                border_width=1, border_color=Colors.PRIMARY,
-                hover_color=Colors.BORDER, font=Fonts.BODY_BOLD,
-                corner_radius=Spacing.BUTTON_RADIUS,
-                command=self._open_brief_modal
-            )
-            self.btn_brief.pack(side="right", padx=Spacing.LG)
-            
-        # ── Pipeline Bar ──
-        # Determine step based on article data
-        # Research(0), Outline(1), Dịch thuật(2), Thumb(3), SEO(4)
-        step = 0
-        if article_data.get('focus_keyword'):
-            step = max(step, 1)
-        if article_data.get('translation_text'):
-            step = max(step, 2)
-        if article_data.get('publish_status') in ['ready', 'optimized', 'published']:
-             step = 4
-             
-        self.pipeline_bar = PublishPipelineBar(self, current_step=step)
-        self.pipeline_bar.grid(row=1, column=0, columnspan=2, sticky="ew", padx=Spacing.MD, pady=(0, Spacing.SM))
         
         # Adjust grid row weights
         self.grid_rowconfigure(1, weight=0)
@@ -416,28 +379,4 @@ class DualViewEditor(ctk.CTkToplevel):
         from datetime import datetime
         return datetime.now().strftime("%H:%M:%S")
 
-    def _open_seo_modal(self):
-        """Opens a modal dialog showing the SEO Panel."""
-        seo_win = ctk.CTkToplevel(self)
-        seo_win.title("Cấu hình SEO & Google SERP Preview")
-        seo_win.geometry("850x500")
-        seo_win.transient(self)
-        seo_win.grab_set()
-        seo_win.configure(fg_color=Colors.BG_APP)
-        
-        # pass settings manager from service
-        sm = self.translation_service.settings if self.translation_service else None
-        panel = SeoPanel(seo_win, self.db_manager, self.article_data, settings_manager=sm)
-        panel.pack(fill="both", expand=True, padx=Spacing.XL, pady=Spacing.XL)
 
-    def _open_brief_modal(self):
-        """Opens a modal dialog showing the Content Brief."""
-        brief_win = ctk.CTkToplevel(self)
-        brief_win.title("AI Content Brief")
-        brief_win.geometry("850x650")
-        brief_win.transient(self)
-        brief_win.grab_set()
-        brief_win.configure(fg_color=Colors.BG_APP)
-        
-        panel = ContentBriefPanel(brief_win, self.db_manager, self.translation_service, self.article_data)
-        panel.pack(fill="both", expand=True, padx=Spacing.LG, pady=Spacing.LG)

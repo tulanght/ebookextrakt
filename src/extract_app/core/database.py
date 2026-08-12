@@ -694,6 +694,24 @@ class DatabaseManager:
         finally:
             conn.close()
 
+    def get_search_stats(self) -> Dict[str, Any]:
+        """Returns total searchable articles and list of distinct site categories."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) as count FROM articles WHERE is_leaf = 1")
+            articles_count = cursor.fetchone()['count']
+            
+            cursor.execute("SELECT DISTINCT site_category FROM books WHERE site_category IS NOT NULL AND site_category != ''")
+            categories = [row['site_category'] for row in cursor.fetchall()]
+            
+            return {
+                'total_articles': articles_count,
+                'categories': sorted(categories)
+            }
+        finally:
+            conn.close()
+
     def search_books(self, query: str) -> List[Dict]:
         """Search books by title or author."""
         conn = self._get_connection()
@@ -929,8 +947,20 @@ class DatabaseManager:
         try:
             cursor = conn.cursor()
             
+            # Safely escape FTS5 query to prevent syntax errors
+            safe_words = []
+            for word in query.split():
+                clean_word = word.replace('"', '').replace("'", "").replace("*", "")
+                if clean_word:
+                    safe_words.append(f'"{clean_word}"')
+            
+            if not safe_words:
+                return []
+                
+            fts_query = ' AND '.join(safe_words)
+            
             cat_filter = ""
-            params = [query]
+            params = [fts_query]
             if site_category:
                 cat_filter = "AND b.site_category = ?"
                 params.append(site_category)

@@ -46,20 +46,20 @@ class Fonts:
     FAMILY      = "Segoe UI"
     
     # Sizes
-    H1          = (FAMILY, 22, "bold")
-    H2          = (FAMILY, 18, "bold")
-    H3          = (FAMILY, 15, "bold")
-    BODY        = (FAMILY, 13)
-    BODY_BOLD   = (FAMILY, 13, "bold")
-    SMALL       = (FAMILY, 11)
-    TINY        = (FAMILY, 10)
+    H1          = (FAMILY, 24, "bold")
+    H2          = (FAMILY, 20, "bold")
+    H3          = (FAMILY, 17, "bold")
+    BODY        = (FAMILY, 14)
+    BODY_BOLD   = (FAMILY, 14, "bold")
+    SMALL       = (FAMILY, 13)
+    TINY        = (FAMILY, 12)
     
     # Special
-    LOGO        = (FAMILY, 20, "bold")
-    NAV         = (FAMILY, 13)
-    NAV_LABEL   = (FAMILY, 10, "bold")
-    BUTTON      = (FAMILY, 13, "bold")
-    CODE        = ("Consolas", 12)
+    LOGO        = (FAMILY, 24, "bold")
+    NAV         = (FAMILY, 14)
+    NAV_LABEL   = (FAMILY, 12, "bold")
+    BUTTON      = (FAMILY, 14, "bold")
+    CODE        = ("Consolas", 13)
 
 
 # --- Spacing ---

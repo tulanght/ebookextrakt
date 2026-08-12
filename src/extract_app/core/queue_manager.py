@@ -250,39 +250,54 @@ class ChapterQueueManager:
             chunk_delay = self.settings_manager.get("chunk_delay", 2.0)
             engine = self.settings_manager.get("translation_engine", "cloud")
 
-            start_time = time.time()
-            translation, usage = self.translation_service.translate_text(
-                item.content,
-                chunk_size=chunk_size,
-                delay=chunk_delay,
-            )
-            translation_time = time.time() - start_time
+            max_retries = 3
+            for attempt in range(max_retries):
+                start_time = time.time()
+                translation, usage, err = self.translation_service.translate_text(
+                    item.content,
+                    chunk_size=chunk_size,
+                    delay=chunk_delay,
+                )
+                translation_time = time.time() - start_time
 
-            if translation:
-                self.db_manager.update_article_translation(
-                    item.article_id, translation, "translated"
-                )
-                logger.info(f"Saved translation for article_id={item.article_id}")
-                
-                if usage:
-                    self.db_manager.log_api_usage(
-                        item.article_id, 
-                        'translation', 
-                        engine, 
-                        usage.get('in', 0), 
-                        usage.get('out', 0), 
-                        translation_time
+                if translation:
+                    self.db_manager.update_article_translation(
+                        item.article_id, translation, "translated"
                     )
-                
-                update_dynamic_wpm(
-                    self.settings_manager, engine,
-                    item.word_count, translation_time
-                )
-                
-                return True
-            else:
-                logger.warning(f"Translation returned None for article_id={item.article_id}")
-                return False
+                    logger.info(f"Saved translation for article_id={item.article_id}")
+                    
+                    if usage:
+                        self.db_manager.log_api_usage(
+                            item.article_id, 
+                            'translation', 
+                            engine, 
+                            usage.get('in', 0), 
+                            usage.get('out', 0), 
+                            translation_time
+                        )
+                    
+                    update_dynamic_wpm(
+                        self.settings_manager, engine,
+                        item.word_count, translation_time
+                    )
+                    
+                    # Nghỉ một chút giữa các bài để tránh spam API liên tục
+                    time.sleep(chunk_delay)
+                    return True
+                else:
+                    err_str = str(err) if err else "Unknown Error"
+                    if "429" in err_str or "quota" in err_str.lower():
+                        logger.warning(f"Rate limited (429/Quota) for article_id={item.article_id}. Attempt {attempt+1}/{max_retries}. Waiting 60s...")
+                        time.sleep(60)
+                        continue # Thử lại
+                    else:
+                        logger.warning(f"Translation failed for article_id={item.article_id}. Error: {err_str}. Auto-pausing queue.")
+                        self.pause() # Tự động tạm dừng nếu dịch lỗi nghiêm trọng
+                        return False
+            
+            logger.warning(f"Exhausted retries for article_id={item.article_id} due to rate limits. Auto-pausing queue.")
+            self.pause()
+            return False
 
         except Exception as e:
             logger.error(f"Queue worker error on article_id={item.article_id}: {e}")

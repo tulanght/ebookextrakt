@@ -1,9 +1,8 @@
-
 # --------------------------------------------------------------------------------
 # Project: ExtractPDF-EPUB
 # File: src/extract_app/modules/ui/settings_view.py
-# Version: 1.0.0
-# Description: Main Settings View (embedded).
+# Version: 1.2.0
+# Description: Main Settings View (embedded in main window).
 # --------------------------------------------------------------------------------
 
 import customtkinter as ctk
@@ -46,12 +45,10 @@ class SettingsView(ctk.CTkFrame):
         
         self.tabview.add("Dịch thuật & AI")
         self.tabview.add("Từ Vựng (Glossary)")
-        self.tabview.add("WordPress Sites")
         self.tabview.add("Giao diện & Hệ thống")
         
         self._build_translation_tab(self.tabview.tab("Dịch thuật & AI"))
         self._build_glossary_tab(self.tabview.tab("Từ Vựng (Glossary)"))
-        self._build_wp_sites_tab(self.tabview.tab("WordPress Sites"))
         self._build_system_tab(self.tabview.tab("Giao diện & Hệ thống"))
         
         self.tabview.set("Dịch thuật & AI")
@@ -97,17 +94,41 @@ class SettingsView(ctk.CTkFrame):
         self.cloud_frame.pack(fill="x", pady=Spacing.MD, ipady=Spacing.SM)
         
         ctk.CTkLabel(
-            self.cloud_frame, text="Cấu hình Gemini API (Cloud)", 
+            self.cloud_frame, text="Cấu hình Cloud AI", 
             font=Fonts.BODY_BOLD, text_color=Colors.TEXT_PRIMARY
         ).pack(anchor="w", padx=Spacing.MD, pady=Spacing.SM)
         
-        key_frame = ctk.CTkFrame(self.cloud_frame, fg_color="transparent")
-        key_frame.pack(fill="x", padx=Spacing.MD)
+        # Provider Selection
+        provider_frame = ctk.CTkFrame(self.cloud_frame, fg_color="transparent")
+        provider_frame.pack(fill="x", padx=Spacing.MD, pady=Spacing.SM)
         
-        ctk.CTkLabel(key_frame, text="API Key:", width=80, anchor="w", font=Fonts.BODY, text_color=Colors.TEXT_PRIMARY).pack(side="left")
+        ctk.CTkLabel(provider_frame, text="Nền tảng:", width=80, anchor="w", font=Fonts.BODY, text_color=Colors.TEXT_PRIMARY).pack(side="left")
+        self.provider_var = tk.StringVar(value=self.settings_manager.get("cloud_provider", "ai_studio"))
+        
+        ctk.CTkRadioButton(
+            provider_frame, text="Google AI Studio", variable=self.provider_var, value="ai_studio",
+            command=self._update_cloud_ui, font=Fonts.BODY, text_color=Colors.TEXT_PRIMARY,
+            fg_color=Colors.PRIMARY, hover_color=Colors.PRIMARY_HOVER
+        ).pack(side="left", padx=(0, Spacing.MD))
+        
+        ctk.CTkRadioButton(
+            provider_frame, text="Vertex AI (300$)", variable=self.provider_var, value="vertex_ai",
+            command=self._update_cloud_ui, font=Fonts.BODY, text_color=Colors.TEXT_PRIMARY,
+            fg_color=Colors.PRIMARY, hover_color=Colors.PRIMARY_HOVER
+        ).pack(side="left", padx=Spacing.SM)
+
+        # Provider Settings Container
+        self.provider_settings_container = ctk.CTkFrame(self.cloud_frame, fg_color="transparent")
+        self.provider_settings_container.pack(fill="x")
+
+        # AI Studio Frame
+        self.ai_studio_frame = ctk.CTkFrame(self.provider_settings_container, fg_color="transparent")
+        self.ai_studio_frame.pack(fill="x", padx=Spacing.MD, pady=Spacing.SM)
+        
+        ctk.CTkLabel(self.ai_studio_frame, text="API Key:", width=80, anchor="w", font=Fonts.BODY, text_color=Colors.TEXT_PRIMARY).pack(side="left")
         self.api_key_var = tk.StringVar(value=self.settings_manager.get_api_key())
         self.api_key_entry = ctk.CTkEntry(
-            key_frame, textvariable=self.api_key_var, show="•", width=300,
+            self.ai_studio_frame, textvariable=self.api_key_var, show="•", width=300,
             fg_color=Colors.BG_INPUT, border_color=Colors.BORDER, text_color=Colors.TEXT_PRIMARY,
             height=32
         )
@@ -115,11 +136,57 @@ class SettingsView(ctk.CTkFrame):
         
         self.show_api_key = False
         self.btn_toggle = ctk.CTkButton(
-            key_frame, text="👁", width=32, height=32, command=self._toggle_key_visibility,
+            self.ai_studio_frame, text="👁", width=32, height=32, command=self._toggle_key_visibility,
             fg_color=Colors.BG_CARD, hover_color=Colors.BG_CARD_HOVER, border_width=1, border_color=Colors.BORDER,
             text_color=Colors.TEXT_PRIMARY
         )
         self.btn_toggle.pack(side="left", padx=Spacing.SM)
+
+        # Vertex AI Frame
+        self.vertex_frame = ctk.CTkFrame(self.provider_settings_container, fg_color="transparent")
+        self.vertex_frame.pack(fill="x", padx=Spacing.MD, pady=Spacing.SM)
+        
+        v_api_frame = ctk.CTkFrame(self.vertex_frame, fg_color="transparent")
+        v_api_frame.pack(fill="x", pady=2)
+        ctk.CTkLabel(v_api_frame, text="API Key:", width=80, anchor="w", font=Fonts.BODY, text_color=Colors.TEXT_PRIMARY).pack(side="left")
+        self.v_api_key_var = tk.StringVar(value=self.settings_manager.get("vertex_api_key", ""))
+        ctk.CTkEntry(
+            v_api_frame, textvariable=self.v_api_key_var, placeholder_text="(Ưu tiên dùng API Key từ Agent Platform nếu có)",
+            fg_color=Colors.BG_INPUT, border_color=Colors.BORDER, text_color=Colors.TEXT_PRIMARY, height=32, show="•"
+        ).pack(side="left", padx=Spacing.SM, fill="x", expand=True)
+
+
+        v_proj_frame = ctk.CTkFrame(self.vertex_frame, fg_color="transparent")
+        v_proj_frame.pack(fill="x", pady=2)
+        ctk.CTkLabel(v_proj_frame, text="Project ID:", width=80, anchor="w", font=Fonts.BODY, text_color=Colors.TEXT_PRIMARY).pack(side="left")
+        self.v_proj_var = tk.StringVar(value=self.settings_manager.get("vertex_project_id", ""))
+        ctk.CTkEntry(
+            v_proj_frame, textvariable=self.v_proj_var,
+            fg_color=Colors.BG_INPUT, border_color=Colors.BORDER, text_color=Colors.TEXT_PRIMARY, height=32
+        ).pack(side="left", padx=Spacing.SM, fill="x", expand=True)
+        
+        v_reg_frame = ctk.CTkFrame(self.vertex_frame, fg_color="transparent")
+        v_reg_frame.pack(fill="x", pady=2)
+        ctk.CTkLabel(v_reg_frame, text="Region:", width=80, anchor="w", font=Fonts.BODY, text_color=Colors.TEXT_PRIMARY).pack(side="left")
+        self.v_reg_var = tk.StringVar(value=self.settings_manager.get("vertex_region", "us-central1"))
+        ctk.CTkEntry(
+            v_reg_frame, textvariable=self.v_reg_var,
+            fg_color=Colors.BG_INPUT, border_color=Colors.BORDER, text_color=Colors.TEXT_PRIMARY, height=32
+        ).pack(side="left", padx=Spacing.SM, fill="x", expand=True)
+
+        v_json_frame = ctk.CTkFrame(self.vertex_frame, fg_color="transparent")
+        v_json_frame.pack(fill="x", pady=2)
+        ctk.CTkLabel(v_json_frame, text="JSON Key:", width=80, anchor="w", font=Fonts.BODY, text_color=Colors.TEXT_PRIMARY).pack(side="left")
+        self.v_json_var = tk.StringVar(value=self.settings_manager.get("vertex_credentials_path", ""))
+        ctk.CTkEntry(
+            v_json_frame, textvariable=self.v_json_var, placeholder_text="(Bỏ trống nếu dùng gcloud ADC)",
+            fg_color=Colors.BG_INPUT, border_color=Colors.BORDER, text_color=Colors.TEXT_PRIMARY, height=32
+        ).pack(side="left", padx=Spacing.SM, fill="x", expand=True)
+        ctk.CTkButton(
+            v_json_frame, text="Browse", width=60, height=32, command=self._browse_json,
+            fg_color=Colors.BG_CARD, hover_color=Colors.BG_CARD_HOVER, border_width=1, border_color=Colors.BORDER,
+            text_color=Colors.TEXT_PRIMARY
+        ).pack(side="right")
 
         # Model Selection
         model_select_frame = ctk.CTkFrame(self.cloud_frame, fg_color="transparent")
@@ -127,10 +194,23 @@ class SettingsView(ctk.CTkFrame):
         
         ctk.CTkLabel(model_select_frame, text="Model:", width=80, anchor="w", font=Fonts.BODY, text_color=Colors.TEXT_PRIMARY).pack(side="left")
         
-        current_model = self.settings_manager.get("cloud_model_name", "gemini-2.5-pro")
-        self.cloud_model_var = tk.StringVar(value=current_model)
-        
-        cloud_models = [
+        self.STUDIO_MODELS = [
+            "gemini-3.1-pro-preview",
+            "gemini-3.1-flash-lite",
+            "gemini-3-pro-preview",
+            "gemini-3-flash-preview",
+            "gemini-2.5-pro",
+            "gemini-2.5-flash",
+            "gemini-2.0-flash",
+            "gemini-2.0-flash-lite",
+            "gemini-1.5-pro",
+            "gemini-1.5-flash"
+        ]
+        self.VERTEX_MODELS = [
+            "gemini-3.1-pro-preview",
+            "gemini-3.1-flash-lite",
+            "gemini-3-pro-preview",
+            "gemini-3-flash-preview",
             "gemini-2.5-pro",
             "gemini-2.5-flash",
             "gemini-2.0-flash",
@@ -139,9 +219,15 @@ class SettingsView(ctk.CTkFrame):
             "gemini-1.5-flash"
         ]
         
-        self.cloud_model_menu = ctk.CTkEntry(
-            model_select_frame, textvariable=self.cloud_model_var, width=250,
-            fg_color=Colors.BG_INPUT, border_color=Colors.BORDER, text_color=Colors.TEXT_PRIMARY, height=32
+        provider = self.settings_manager.get("cloud_provider", "ai_studio")
+        initial_models = self.VERTEX_MODELS if provider == "vertex_ai" else self.STUDIO_MODELS
+        current_model = self.settings_manager.get("cloud_model_name", initial_models[0])
+        self.cloud_model_var = tk.StringVar(value=current_model)
+        
+        self.cloud_model_menu = ctk.CTkComboBox(
+            model_select_frame, variable=self.cloud_model_var, values=initial_models, width=280,
+            fg_color=Colors.BG_INPUT, button_color=Colors.BORDER, button_hover_color=Colors.PRIMARY,
+            text_color=Colors.TEXT_PRIMARY, dropdown_fg_color=Colors.BG_CARD, dropdown_text_color=Colors.TEXT_PRIMARY
         )
         self.cloud_model_menu.pack(side="left", padx=Spacing.SM)
         
@@ -149,6 +235,22 @@ class SettingsView(ctk.CTkFrame):
             model_select_frame, text="(Pro = Chất lượng, Flash = Tốc độ)", 
             text_color=Colors.TEXT_MUTED, font=Fonts.TINY
         ).pack(side="left", padx=Spacing.MD)
+
+        # Chunk size & Delay (dùng cho cả Cloud)
+        perf_frame = ctk.CTkFrame(self.cloud_frame, fg_color="transparent")
+        perf_frame.pack(fill="x", padx=Spacing.MD, pady=(0, Spacing.SM))
+        ctk.CTkLabel(perf_frame, text="Chunk size:", width=80, anchor="w", font=Fonts.BODY, text_color=Colors.TEXT_PRIMARY).pack(side="left")
+        self.chunk_size_var = tk.StringVar(value=str(self.settings_manager.get("chunk_size", 15000)))
+        ctk.CTkEntry(
+            perf_frame, textvariable=self.chunk_size_var, width=80,
+            fg_color=Colors.BG_INPUT, border_color=Colors.BORDER, text_color=Colors.TEXT_PRIMARY, height=32
+        ).pack(side="left", padx=Spacing.SM)
+        ctk.CTkLabel(perf_frame, text="Delay (s):", width=70, anchor="w", font=Fonts.BODY, text_color=Colors.TEXT_PRIMARY).pack(side="left", padx=(Spacing.LG, 0))
+        self.delay_var = tk.StringVar(value=str(self.settings_manager.get("chunk_delay", 2.0)))
+        ctk.CTkEntry(
+            perf_frame, textvariable=self.delay_var, width=60,
+            fg_color=Colors.BG_INPUT, border_color=Colors.BORDER, text_color=Colors.TEXT_PRIMARY, height=32
+        ).pack(side="left", padx=Spacing.SM)
         
         # --- 3. Local Settings ---
         self.local_frame = ctk.CTkFrame(self.dynamic_settings_frame, fg_color=Colors.BG_APP, corner_radius=Spacing.CARD_RADIUS)
@@ -197,28 +299,7 @@ class SettingsView(ctk.CTkFrame):
         ).pack(side="left", padx=Spacing.SM)
         ctk.CTkLabel(config_frame, text="(-1 = Auto)", text_color=Colors.TEXT_MUTED, font=Fonts.TINY).pack(side="left")
         
-        # --- 4. Common Settings ---
-        ctk.CTkLabel(
-            scroll, text="Tinh chỉnh nâng cao", 
-            font=Fonts.H3, text_color=Colors.TEXT_PRIMARY
-        ).pack(anchor="w", pady=(Spacing.LG, Spacing.SM))
-        
-        common_frame = ctk.CTkFrame(scroll, fg_color="transparent")
-        common_frame.pack(fill="x", pady=Spacing.SM)
-        
-        ctk.CTkLabel(common_frame, text="Chunk size:", width=80, anchor="w", font=Fonts.BODY, text_color=Colors.TEXT_PRIMARY).pack(side="left")
-        self.chunk_size_var = tk.StringVar(value=str(self.settings_manager.get("chunk_size", 3000)))
-        ctk.CTkEntry(
-            common_frame, textvariable=self.chunk_size_var, width=80,
-            fg_color=Colors.BG_INPUT, border_color=Colors.BORDER, text_color=Colors.TEXT_PRIMARY, height=32
-        ).pack(side="left", padx=Spacing.SM)
-        
-        ctk.CTkLabel(common_frame, text="Delay (s):", width=80, anchor="w", font=Fonts.BODY, text_color=Colors.TEXT_PRIMARY).pack(side="left", padx=(Spacing.XL, 0))
-        self.delay_var = tk.StringVar(value=str(self.settings_manager.get("chunk_delay", 2.0)))
-        ctk.CTkEntry(
-            common_frame, textvariable=self.delay_var, width=80,
-            fg_color=Colors.BG_INPUT, border_color=Colors.BORDER, text_color=Colors.TEXT_PRIMARY, height=32
-        ).pack(side="left", padx=Spacing.SM)
+        # --- 4. Common Settings --- (chỉ còn Local cần thêm perf settings)
         
         # --- Actions ---
         action_frame = ctk.CTkFrame(parent, fg_color="transparent")
@@ -248,10 +329,7 @@ class SettingsView(ctk.CTkFrame):
         tab = GlossaryTab(parent, self.translation_service.glossary_manager)
         tab.pack(fill="both", expand=True, padx=Spacing.SM, pady=Spacing.SM)
 
-    def _build_wp_sites_tab(self, parent):
-        from .wp_sites_tab import WPSitesTab
-        tab = WPSitesTab(parent, self.settings_manager)
-        tab.pack(fill="both", expand=True, padx=Spacing.SM, pady=Spacing.SM)
+
 
     def _build_system_tab(self, parent):
         """Placeholder for system settings."""
@@ -277,9 +355,25 @@ class SettingsView(ctk.CTkFrame):
         if engine == "cloud":
             self.local_frame.pack_forget()
             self.cloud_frame.pack(fill="x", pady=Spacing.MD, ipady=Spacing.SM)
+            self._update_cloud_ui()
         else:
             self.cloud_frame.pack_forget()
             self.local_frame.pack(fill="x", pady=Spacing.MD, ipady=Spacing.SM)
+
+    def _update_cloud_ui(self):
+        provider = self.provider_var.get()
+        if provider == "ai_studio":
+            self.vertex_frame.pack_forget()
+            self.ai_studio_frame.pack(fill="x", padx=Spacing.MD, pady=Spacing.SM)
+            self.cloud_model_menu.configure(values=self.STUDIO_MODELS)
+            if self.cloud_model_var.get() not in self.STUDIO_MODELS:
+                self.cloud_model_var.set(self.STUDIO_MODELS[0])
+        else:
+            self.ai_studio_frame.pack_forget()
+            self.vertex_frame.pack(fill="x", padx=Spacing.MD, pady=Spacing.SM)
+            self.cloud_model_menu.configure(values=self.VERTEX_MODELS)
+            if self.cloud_model_var.get() not in self.VERTEX_MODELS:
+                self.cloud_model_var.set(self.VERTEX_MODELS[0])
 
     def _toggle_key_visibility(self):
         self.show_api_key = not self.show_api_key
@@ -290,6 +384,29 @@ class SettingsView(ctk.CTkFrame):
         file_path = ctk.filedialog.askopenfilename(filetypes=[("GGUF Model", "*.gguf")])
         if file_path:
             self.model_path_var.set(file_path)
+
+    def _browse_json(self):
+        file_path = ctk.filedialog.askopenfilename(filetypes=[("JSON Key", "*.json")])
+        if file_path:
+            import shutil
+            from pathlib import Path
+            dest_dir = Path("config/keys")
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            dest_file = dest_dir / Path(file_path).name
+            try:
+                shutil.copy2(file_path, dest_file)
+                self.v_json_var.set(str(dest_file.absolute()))
+                self.status_label.configure(text="✓ Đã copy JSON key vào dự án", text_color=Colors.SUCCESS)
+                
+                # Auto-add to .gitignore
+                gitignore_path = Path(".gitignore")
+                ignore_rule = "config/keys/"
+                content = gitignore_path.read_text(encoding="utf-8") if gitignore_path.exists() else ""
+                if ignore_rule not in content:
+                    with open(gitignore_path, "a", encoding="utf-8") as f:
+                        f.write(f"\n# GCP Keys\n{ignore_rule}\n")
+            except Exception as e:
+                self.status_label.configure(text=f"✗ Lỗi copy file: {e}", text_color=Colors.DANGER)
 
     def _change_theme(self, new_theme: str):
         ctk.set_appearance_mode(new_theme)
@@ -304,9 +421,16 @@ class SettingsView(ctk.CTkFrame):
         except: pass
         
         # Cloud
+        self.settings_manager.set("cloud_provider", self.provider_var.get())
+        self.settings_manager.set("vertex_project_id", self.v_proj_var.get().strip())
+        self.settings_manager.set("vertex_region", self.v_reg_var.get().strip())
+        self.settings_manager.set("vertex_credentials_path", self.v_json_var.get().strip())
+        self.settings_manager.set("vertex_api_key", self.v_api_key_var.get().strip())
         self.settings_manager.set_api_key(self.api_key_var.get().strip())
-        self.translation_service.set_api_key(self.api_key_var.get().strip())
         self.settings_manager.set("cloud_model_name", self.cloud_model_var.get())
+
+        # Reload cloud client với cấu hình mới
+        self.translation_service.cloud_client.setup()
         
         # Local
         self.settings_manager.set("local_model_path", self.model_path_var.get())
@@ -318,18 +442,20 @@ class SettingsView(ctk.CTkFrame):
         self.after(2000, lambda: self.status_label.configure(text=""))
 
     def _test_connection(self):
+        # Always save current settings first to apply them to CloudAIClient
+        self._save_settings()
+        
         engine = self.engine_var.get()
         self.status_label.configure(text="⏳ Đang kiểm tra...", text_color=Colors.WARNING)
         self.update()
         
         if engine == "cloud":
             try:
-                self.translation_service.set_api_key(self.api_key_var.get())
-                res = self.translation_service._translate_cloud_chunk("Hello", retries=1)
+                res = self.translation_service.cloud_client.translate_chunk("Hello")
                 if res[0]:
-                     self.status_label.configure(text="✓ Cloud API OK", text_color=Colors.SUCCESS)
+                     self.status_label.configure(text="✓ Cloud API/Vertex OK", text_color=Colors.SUCCESS)
                 else:
-                     self.status_label.configure(text=f"✗ {res[1]}", text_color=Colors.DANGER)
+                     self.status_label.configure(text=f"✗ {res[2]}", text_color=Colors.DANGER)
             except Exception as e:
                 self.status_label.configure(text=f"✗ {e}", text_color=Colors.DANGER)
         else: 

@@ -41,10 +41,11 @@ from .ui.results_view import ResultsView
 from .ui.log_panel import LogPanel
 from .ui.loading_overlay import LoadingOverlay
 from .ui.library_view import LibraryView # New Import
-from .ui.publish_view import PublishView # New Import
-from .ui.keyword_plan_view import KeywordPlanView # New Import
 from .ui.search_view import SearchView
 from .ui.settings_view import SettingsView # New Import
+from .ui.ingestion_view import IngestionView # New Import
+
+
 
 class MainWindow(ctk.CTk):
     """
@@ -55,6 +56,7 @@ class MainWindow(ctk.CTk):
         super().__init__()
         self.title("E-Extract — Ebook Extraction & Translation")
         self.geometry("1200x800")
+        self.state("zoomed")
         # Theme Configuration
         ctk.set_appearance_mode("Dark")
         self.configure(fg_color=Colors.BG_APP) 
@@ -77,6 +79,7 @@ class MainWindow(ctk.CTk):
         self.top_bar: TopBarFrame
         self.dashboard_view: DashboardView
         self.results_view: ResultsView
+        self.ingestion_view = None
         self.loading_frame: ctk.CTkFrame
         self.loading_label: ctk.CTkLabel
         
@@ -144,8 +147,7 @@ class MainWindow(ctk.CTk):
         self.dashboard_view = DashboardView(self.content_area, on_import=self._on_select_file)
         self.results_view   = None  # lazy
         self.library_view   = None  # lazy
-        self.publish_view   = None  # lazy
-        self.keyword_plan_view = None  # lazy
+
         self.search_view    = None  # lazy
         self.settings_view  = None  # lazy
         
@@ -174,9 +176,8 @@ class MainWindow(ctk.CTk):
             "results",   # lightweight, fast
             "settings",  # medium weight
             "search",    # medium weight
-            "publish",   # heavier — loads articles
-            "keyword",   # heavier — loads clusters
-            "library",   # heaviest — loads book covers (last)
+            "ingestion", # lightweight
+            "library",   # heaviest — loads book covers
         ]
         for i, view_name in enumerate(_lazy_views):
             self.after(i * 300, lambda n=view_name: self._get_view(n))
@@ -216,14 +217,8 @@ class MainWindow(ctk.CTk):
             if was_created:
                 self.library_view.refresh_library()  # refresh only on re-visits
 
-
-        elif view_name == "publish":
-            self._show_view("publish")  # lazy-create then refresh
-            self.publish_view.refresh_list()
-
-        elif view_name == "keyword":
-            self._show_view("keyword")  # lazy-create then refresh
-            self.keyword_plan_view.refresh_clusters()
+        elif view_name == "ingestion":
+            self._show_view("ingestion")
 
         elif view_name == "search":
             self._show_view("search")
@@ -241,18 +236,19 @@ class MainWindow(ctk.CTk):
             if self.library_view is None:
                 self.library_view = LibraryView(self.content_area, db_manager=self.db_manager, settings_manager=self.settings_manager, translation_service=self.translation_service)
             return self.library_view
-        if view_name == "publish":
-            if self.publish_view is None:
-                self.publish_view = PublishView(self.content_area, db_manager=self.db_manager, settings_manager=self.settings_manager, translation_service=self.translation_service)
-            return self.publish_view
-        if view_name == "keyword":
-            if self.keyword_plan_view is None:
-                self.keyword_plan_view = KeywordPlanView(self.content_area, db_manager=self.db_manager, settings_manager=self.settings_manager, translation_service=self.translation_service)
-            return self.keyword_plan_view
+
         if view_name == "search":
             if self.search_view is None:
                 self.search_view = SearchView(self.content_area, db_manager=self.db_manager)
             return self.search_view
+        if view_name == "ingestion":
+            if self.ingestion_view is None:
+                self.ingestion_view = IngestionView(
+                    self.content_area, 
+                    db_manager=self.db_manager, 
+                    cloud_client=self.translation_service.cloud_client
+                )
+            return self.ingestion_view
         if view_name == "settings":
             if self.settings_view is None:
                 self.settings_view = SettingsView(self.content_area, settings_manager=self.settings_manager, translation_service=self.translation_service)
@@ -270,8 +266,8 @@ class MainWindow(ctk.CTk):
         self.loading_overlay.grid_forget()
 
         # Hide lazy views only if already created
-        for attr in ("results_view", "library_view", "publish_view",
-                     "keyword_plan_view", "search_view", "settings_view"):
+        for attr in ("results_view", "library_view",
+                     "search_view", "ingestion_view", "settings_view"):
             v = getattr(self, attr)
             if v is not None:
                 v.grid_forget()

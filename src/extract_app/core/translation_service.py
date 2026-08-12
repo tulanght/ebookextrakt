@@ -33,7 +33,7 @@ class TranslationService:
     Routes requests to Google Gemini (Cloud) or TranslateGemma (Local).
 
     Public API (unchanged from v3):
-        translate_text(text, chunk_size, delay, progress_callback) -> str | None
+        translate_text(text, chunk_size, delay, progress_callback) -> Tuple[Optional[str], dict, Optional[str]]
         transform_text(archive_text, original_text, variant_type)  -> (str, err)
         extract_glossary_from_text(text, subject)                  -> (list, err)
         set_api_key(key)
@@ -77,7 +77,7 @@ class TranslationService:
         chunk_size: int = None,
         delay: float = None,
         progress_callback: Callable[[int, int, str], None] = None,
-    ) -> Tuple[Optional[str], dict]:
+    ) -> Tuple[Optional[str], dict, Optional[str]]:
         """Translate *text* from English to Vietnamese.
 
         Uses Cloud (Gemini) or Local (TranslateGemma) depending on settings.
@@ -112,7 +112,7 @@ class TranslationService:
                 res, usage, err = self._translate_local_chunk(chunk)
                 if err:
                     logger.error(f"[Local] Chunk {i} error: {err}")
-                    return None, total_usage
+                    return None, total_usage, err
                 results[i] = res
                 total_usage["in"] += usage.get("in", 0)
                 total_usage["out"] += usage.get("out", 0)
@@ -131,7 +131,7 @@ class TranslationService:
                         res, usage, err = future.result()
                         if err:
                             logger.error(f"[Cloud] Chunk {idx} error: {err}")
-                            return None, total_usage
+                            return None, total_usage, err
                         results[idx] = res
                         total_usage["in"] += usage.get("in", 0)
                         total_usage["out"] += usage.get("out", 0)
@@ -140,13 +140,13 @@ class TranslationService:
                             progress_callback(completed, total, f"Đã dịch {completed}/{total} (Cloud)...")
                     except Exception as e:
                         logger.error(f"[Cloud] Execution error: {e}")
-                        return None, total_usage
+                        return None, total_usage, str(e)
 
         if progress_callback:
             progress_callback(total, total, "Hoàn thành!")
 
         full_translation = "\n\n".join(r for r in results if r)
-        return self.chunker.restore_anchors(full_translation, anchors_map), total_usage
+        return self.chunker.restore_anchors(full_translation, anchors_map), total_usage, None
 
     # ── Style transformation ──────────────────────────────────────────
 

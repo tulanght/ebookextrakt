@@ -37,9 +37,14 @@ class SearchView(ctk.CTkFrame):
         search_bar_frame.grid(row=0, column=0, sticky="ew", padx=Spacing.LG, pady=Spacing.LG)
         search_bar_frame.grid_columnconfigure(0, weight=1)
         
+        # Fetch dynamic stats
+        stats = self.db_manager.get_search_stats()
+        total_articles = stats.get('total_articles', 0)
+        categories = ["Tất cả"] + stats.get('categories', [])
+        
         self.entry_search = ctk.CTkEntry(
             search_bar_frame, 
-            placeholder_text="🔍 Tìm trong 91,521 articles...", 
+            placeholder_text=f"🔍 Tìm trong {total_articles:,} articles...", 
             fg_color=Colors.BG_INPUT, 
             height=40
         )
@@ -50,7 +55,7 @@ class SearchView(ctk.CTkFrame):
         self.option_category = ctk.CTkSegmentedButton(
             search_bar_frame, 
             variable=self.option_category_var,
-            values=["Tất cả", "animal", "plant", "overlap"]
+            values=categories
         )
         self.option_category.grid(row=0, column=1, padx=(0, Spacing.SM))
         

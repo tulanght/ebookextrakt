@@ -17,6 +17,11 @@ class SettingsManager:
     
     DEFAULT_SETTINGS = {
         "gemini_api_key": "",
+        "cloud_provider": "ai_studio", # "ai_studio" or "vertex_ai"
+        "vertex_project_id": "",
+        "vertex_region": "us-central1",
+        "vertex_credentials_path": "",
+        "vertex_api_key": "",
         "theme": "Dark",
         "default_output_dir": "",
         "chunk_size": 3000,
@@ -29,9 +34,6 @@ class SettingsManager:
         # ETA Estimation (based on user's benchmark: 1370 words in ~7.5 mins)
         "local_llm_wpm": 180,
         "cloud_llm_wpm": 6000,
-        "website_domain": "www.your-website.com",
-        # WordPress Publishing Pipeline
-        "wp_sites": [],
     }
 
     def __init__(self, settings_path: str = None):
@@ -77,27 +79,3 @@ class SettingsManager:
 
     def set_api_key(self, api_key: str):
         self.set("gemini_api_key", api_key)
-
-    # --- WordPress Configuration Providers ---
-    def get_wp_sites(self) -> list:
-        return self.get("wp_sites", [])
-
-    def get_wp_site(self, site_id: str) -> Optional[Dict]:
-        for site in self.get_wp_sites():
-            if site.get("id") == site_id:
-                return site
-        return None
-
-    def resolve_category(self, site_id: str, focus_keyword: str) -> Optional[int]:
-        if not focus_keyword:
-            return None
-        site = self.get_wp_site(site_id)
-        if not site:
-            return None
-            
-        focus_keyword_lower = focus_keyword.lower()
-        for cat in site.get("category_map", []):
-            keywords = cat.get("keywords", [])
-            if any(kw.lower() in focus_keyword_lower for kw in keywords):
-                return cat.get("wp_id")
-        return None

@@ -16,6 +16,8 @@ app = FastAPI(
 )
 
 # Allow CORS for the Electron frontend
+from src.extract_app.api.routers import settings, library, ingest, editor
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Trong môi trường dev Electron thường dùng localhost:5173 hoặc file://
@@ -23,6 +25,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include Routers
+app.include_router(settings.router)
+app.include_router(library.router)
+app.include_router(ingest.router)
+app.include_router(editor.router)
 
 @app.get("/api/ping")
 def ping() -> dict[str, str]:
