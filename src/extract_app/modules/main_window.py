@@ -376,18 +376,43 @@ class MainWindow(ctk.CTk):
     # or be coordinated from here if ResultsView emits an event.
     def _on_extract_content(self, target_dir: str):
         """Handle extraction trigger from ResultsView."""
-        if not target_dir:
-            return
-
-        # Check for overwrite (Main Thread UI interaction)
+        # Calculate target_dir automatically based on organize_ebooks logic
+        filename = Path(self.current_filepath).name
+        
+        try:
+            import sys
+            project_root = Path(__file__).resolve().parent.parent.parent.parent
+            if str(project_root) not in sys.path:
+                sys.path.insert(0, str(project_root))
+            from scripts.organize_ebooks import classify_file, load_overrides, EBOOK_ROOT
+            
+            overrides = load_overrides()
+            category = classify_file(filename, overrides)
+            
+            if category == "_NOT_BIOLOGY":
+                base_dir = EBOOK_ROOT / "_Review_Not_Biology"
+            elif category == "_UNCLASSIFIED":
+                base_dir = Path("D:/Ebooks/_UNCLASSIFIED")
+            elif category == "_SKIP":
+                base_dir = Path("D:/Ebooks/_SKIP")
+            else:
+                base_dir = EBOOK_ROOT / category
+                
+        except Exception as e:
+            print(f"Error determining category: {e}")
+            base_dir = Path("D:/Ebooks/_UNCLASSIFIED")
+            
+        base_dir.mkdir(parents=True, exist_ok=True)
+        
         output_name = Path(self.current_filepath).name
-        full_output_path = Path(target_dir) / output_name.replace(" ", "_").replace(".epub", "").replace(".pdf", "")
+        clean_name = output_name.replace(" ", "_").replace(".epub", "").replace(".pdf", "")
+        full_output_path = base_dir / clean_name
         
         if full_output_path.exists():
             if not ask_yes_no(
                 self,
                 "Thư mục đã tồn tại", 
-                f"Thư mục '{full_output_path.name}' đã tồn tại.\nBạn có muốn ghi đè (xóa và tạo lại) không?",
+                f"Thư mục '{full_output_path.name}' đã tồn tại trong {base_dir.name}.\nBạn có muốn ghi đè (xóa và tạo lại) không?",
                 is_danger=True
             ):
                 return
@@ -404,16 +429,17 @@ class MainWindow(ctk.CTk):
             target=self._worker_save_content, 
             args=(
                 self.current_results.get('content', []), 
-                Path(target_dir), 
+                base_dir, 
                 book_title,
                 metadata.get('author', 'Unknown'),
                 metadata.get('cover_image_path', ''),
-                metadata.get('published_year', '')
+                metadata.get('published_year', ''),
+                category
             ),
             daemon=True
         ).start()
 
-    def _worker_save_content(self, content, target_dir, book_title, author, cover_path, published_year=""):
+    def _worker_save_content(self, content, target_dir, book_title, author, cover_path, published_year="", category=""):
         """Worker thread for saving content."""
         def progress_adapter(percent, msg):
             # Update UI from worker thread safely
@@ -426,7 +452,8 @@ class MainWindow(ctk.CTk):
             author=author,
             original_path=self.current_filepath,
             cover_path=cover_path,
-            published_year=published_year
+            published_year=published_year,
+            category=category
         )
         
         # Schedule completion on main thread

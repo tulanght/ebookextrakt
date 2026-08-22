@@ -171,6 +171,16 @@ class BookCard(ctk.CTkFrame):
         self.btn_delete.bind("<Enter>", self._on_enter)
         self.btn_delete.bind("<Leave>", self._on_leave)
 
+        self.btn_open_folder = ctk.CTkButton(
+            self, text="📁", width=24, height=24,
+            fg_color=Colors.BG_CARD_HOVER, border_color=Colors.PRIMARY, border_width=1,
+            text_color=Colors.PRIMARY, hover_color=Colors.PRIMARY_HOVER,
+            font=Fonts.BODY_BOLD, corner_radius=12,
+            command=self._handle_open_folder
+        )
+        self.btn_open_folder.bind("<Enter>", self._on_enter)
+        self.btn_open_folder.bind("<Leave>", self._on_leave)
+
     def _load_cover_async(self, cover_path: str, cover_w: int, cover_h: int):
         """Load book cover from disk in background thread, then update label on main thread."""
         try:
@@ -192,14 +202,32 @@ class BookCard(ctk.CTkFrame):
     def _on_enter(self, event=None):
         self.configure(border_color=Colors.PRIMARY, fg_color=Colors.BG_CARD_HOVER)
         self.btn_delete.place(relx=1.0, rely=0.0, anchor="ne", x=-6, y=6)
+        self.btn_open_folder.place(relx=1.0, rely=1.0, anchor="se", x=-6, y=-6)
 
     def _on_leave(self, event=None):
         self.configure(border_color=Colors.BORDER, fg_color=Colors.BG_CARD)
         self.btn_delete.place_forget()
+        self.btn_open_folder.place_forget()
 
     def _handle_click_event(self, event=None):
         if self.on_click:
             self.on_click(self.item_id)
+
+    def _handle_open_folder(self):
+        source_path = self.book_data.get('source_path', '')
+        category = self.book_data.get('category', '_UNCLASSIFIED') or '_UNCLASSIFIED'
+        if not source_path: return
+        import os
+        from pathlib import Path
+        filename = Path(source_path).name
+        clean_name = filename.replace(" ", "_").replace(".epub", "").replace(".pdf", "")
+        if category == "_NOT_BIOLOGY": base_dir = Path("D:/Ebooks/_Review_Not_Biology")
+        elif category == "_UNCLASSIFIED": base_dir = Path("D:/Ebooks/_UNCLASSIFIED")
+        elif category == "_SKIP": base_dir = Path("D:/Ebooks/_SKIP")
+        else: base_dir = Path("D:/Ebooks") / category
+        full_path = base_dir / clean_name
+        if full_path.exists(): os.startfile(str(full_path))
+        elif base_dir.exists(): os.startfile(str(base_dir))
 
     @staticmethod
     def _format_relative_date(date_str: str) -> str:
@@ -278,12 +306,19 @@ class BookListRow(ctk.CTkFrame):
         
         ctk.CTkLabel(self, text=prog_text, font=Fonts.SMALL, text_color=Colors.TEXT_PRIMARY).grid(row=0, column=3, padx=20)
         
+        self.btn_open_folder = ctk.CTkButton(
+            self, text="📁", width=30, height=30,
+            fg_color="transparent", text_color=Colors.PRIMARY, hover_color=Colors.BG_CARD_HOVER,
+            font=Fonts.BODY_BOLD, corner_radius=4, command=self._handle_open_folder
+        )
+        self.btn_open_folder.grid(row=0, column=4, padx=(0, 10))
+
         self.btn_delete = ctk.CTkButton(
             self, text="×", width=30, height=30,
             fg_color="transparent", text_color=Colors.DANGER, hover_color=Colors.DANGER_HOVER,
             font=Fonts.BODY_BOLD, corner_radius=4, command=self._handle_delete
         )
-        self.btn_delete.grid(row=0, column=4, padx=(0, 10))
+        self.btn_delete.grid(row=0, column=5, padx=(0, 10))
 
     def _load_cover_async(self, cover_path: str):
         try:
@@ -309,6 +344,22 @@ class BookListRow(ctk.CTkFrame):
     def _handle_click_event(self, event=None):
         if self.on_click:
             self.on_click(self.item_id)
+            
+    def _handle_open_folder(self):
+        source_path = self.book_data.get('source_path', '')
+        category = self.book_data.get('category', '_UNCLASSIFIED') or '_UNCLASSIFIED'
+        if not source_path: return
+        import os
+        from pathlib import Path
+        filename = Path(source_path).name
+        clean_name = filename.replace(" ", "_").replace(".epub", "").replace(".pdf", "")
+        if category == "_NOT_BIOLOGY": base_dir = Path("D:/Ebooks/_Review_Not_Biology")
+        elif category == "_UNCLASSIFIED": base_dir = Path("D:/Ebooks/_UNCLASSIFIED")
+        elif category == "_SKIP": base_dir = Path("D:/Ebooks/_SKIP")
+        else: base_dir = Path("D:/Ebooks") / category
+        full_path = base_dir / clean_name
+        if full_path.exists(): os.startfile(str(full_path))
+        elif base_dir.exists(): os.startfile(str(base_dir))
             
     def _handle_delete(self):
         if self.on_delete:
@@ -361,13 +412,22 @@ class LibraryView(ctk.CTkFrame):
         self.filter_frame = ctk.CTkFrame(self, height=40, fg_color="transparent")
         self.filter_frame.grid(row=1, column=0, sticky="ew", padx=Spacing.MD, pady=(0, Spacing.MD))
         
+        self.filter_category_var = tk.StringVar(value="Tất cả Danh Mục")
+        self.opt_category = ctk.CTkOptionMenu(
+            self.filter_frame, values=["Tất cả Danh Mục"],
+            variable=self.filter_category_var, command=self._on_filter_change,
+            font=Fonts.SMALL, fg_color=Colors.BG_INPUT, button_color=Colors.BORDER,
+            button_hover_color=Colors.PRIMARY, width=140
+        )
+        self.opt_category.pack(side="left", padx=0)
+
         self.filter_status_var = tk.StringVar(value="Tất cả")
         self.seg_filter = ctk.CTkSegmentedButton(
             self.filter_frame, values=["Tất cả", "Chưa dịch", "Đang dịch", "Đã xong"],
             variable=self.filter_status_var, command=self._on_filter_change,
             font=Fonts.SMALL, selected_color=Colors.PRIMARY, selected_hover_color=Colors.PRIMARY_HOVER
         )
-        self.seg_filter.pack(side="left", padx=0)
+        self.seg_filter.pack(side="left", padx=Spacing.MD)
 
         self.sort_var = tk.StringVar(value="Mới thêm ↓")
         self.opt_sort = ctk.CTkOptionMenu(
@@ -425,6 +485,11 @@ class LibraryView(ctk.CTkFrame):
         else:
             self.all_books = self.db_manager.get_all_books()
 
+        categories = sorted(list(set(b.get('category', '') for b in self.all_books if b.get('category', ''))))
+        cat_values = ["Tất cả Danh Mục"] + categories
+        if hasattr(self, 'opt_category'):
+            self.opt_category.configure(values=cat_values)
+
         self._render_books()
 
     def _on_search_change(self, *args):
@@ -442,8 +507,12 @@ class LibraryView(ctk.CTkFrame):
 
         # 1. Apply in-memory filter
         status_filter = self.filter_status_var.get()
+        cat_filter = self.filter_category_var.get()
         filtered_books = []
         for b in self.all_books:
+            if cat_filter != "Tất cả Danh Mục" and b.get('category', '') != cat_filter:
+                continue
+            
             total = b.get('total_leaf', 0) or 0
             translated = b.get('translated_count', 0) or 0
             if status_filter == "Chưa dịch":

@@ -410,15 +410,15 @@ class DatabaseManager:
 
     # --- CRUD Operations ---
 
-    def add_book(self, title: str, author: str, source_path: str, cover_path: str = "", published_year: str = "") -> int:
+    def add_book(self, title: str, author: str, source_path: str, cover_path: str = "", published_year: str = "", category: str = "") -> int:
         """Adds a book to the database. Returns book_id."""
         conn = self._get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute("""
-                INSERT OR IGNORE INTO books (title, author, source_path, cover_path, published_year)
-                VALUES (?, ?, ?, ?, ?)
-            """, (title, author, source_path, cover_path, published_year))
+                INSERT OR IGNORE INTO books (title, author, source_path, cover_path, published_year, category)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (title, author, source_path, cover_path, published_year, category))
             
             # If ignore happened (duplicate), we need the ID
             if cursor.lastrowid and cursor.lastrowid > 0:
@@ -538,7 +538,7 @@ class DatabaseManager:
             conn.close()
     
     def save_book_batch(self, book_title: str, author: str, source_path: str, 
-                        cover_path: str, structured_content: list, published_year: str = "") -> int:
+                        cover_path: str, structured_content: list, published_year: str = "", category: str = "") -> int:
         """
         Saves all book data (chapters, articles, images) in a SINGLE transaction.
         This is MUCH faster than individual insert calls.
@@ -551,9 +551,9 @@ class DatabaseManager:
             
             # 1. Insert Book
             cursor.execute("""
-                INSERT OR IGNORE INTO books (title, author, source_path, cover_path, published_year)
-                VALUES (?, ?, ?, ?, ?)
-            """, (book_title, author, source_path, cover_path, published_year))
+                INSERT OR IGNORE INTO books (title, author, source_path, cover_path, published_year, category)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (book_title, author, source_path, cover_path, published_year, category))
             
             if cursor.lastrowid and cursor.lastrowid > 0:
                 book_id = cursor.lastrowid

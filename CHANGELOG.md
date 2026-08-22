@@ -5,6 +5,18 @@ Dự án này tuân theo [Keep a Changelog](https://keepachangelog.com/en/1.0.0/
 
 ---
 
+## [2.3.0] - 2026-08-22
+
+### 📚 Hệ thống Quản lý Sách (Ebook Ingestion Pipeline V2)
+-   **Dynamic Path Resolution**: Loại bỏ hoàn toàn danh mục hard-code (`PREDEFINED_CATEGORIES`). Giao diện Quản lý Sách và Thư viện giờ đây tự động quét và tạo danh mục dựa trên các thư mục con thực tế tồn tại trong `D:\Ebooks`.
+-   **Hybrid Classification Engine**: Luồng xử lý AI giờ đây kết hợp **Vertex AI** (để trích xuất/chuẩn hóa metadata như Tiêu đề, Tác giả) và một Rule Engine nội bộ (`organize_ebooks.py`) để phân luồng file vật lý chính xác.
+-   **Smart Deduplication & Cleanup**: 
+    -   Bổ sung tính năng quét trùng lặp cả với Database lẫn các file nội bộ.
+    -   Tích hợp thư viện `send2trash` giúp tính năng Cô lập/Xóa ném file thẳng vào Recycle Bin của Windows.
+    -   Thêm nút "🗑️ Xóa tất cả trùng lặp" (Batch Delete) và cơ chế AI tự động dọn dẹp file tàn dư nếu phát hiện sách đã tồn tại (Late Duplicate Detection).
+    -   Fix lỗi đóng băng giao diện "Đang dừng..." bằng khối `try-except-finally` trong background thread.
+-   **Database**: Cập nhật lưu trữ cột `category` để đồng bộ với cấu trúc vật lý thư mục.
+
 ## [2.2.0] - 2026-03-04
 
 ### 🧠 Phân tích PDF (PDF Semantic Splitting)

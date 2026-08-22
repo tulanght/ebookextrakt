@@ -19,14 +19,13 @@ from src.extract_app.core.ai_classifier import AIClassifier
 from src.extract_app.core.config import get_user_data_dir
 from src.extract_app.shared.debug_logger import log as global_log
 import tkinter as tk
+import sys
 
-PREDEFINED_CATEGORIES = [
-    {"id": "Dong_Vat", "name": "Kho Động vật", "desc": "Sách động vật, thú y"},
-    {"id": "Thuc_Vat", "name": "Kho Thực vật", "desc": "Nông nghiệp, thực vật"},
-    {"id": "Dong_Vat_Va_Thuc_Vat", "name": "Động Thực vật (Overlap)", "desc": "Sinh học tổng hợp"},
-    {"id": "Khac", "name": "Các chủ đề Khác", "desc": "Chờ phân loại mở rộng"}
-]
-MAIN_CATS = ["Dong_Vat", "Thuc_Vat", "Dong_Vat_Va_Thuc_Vat"]
+project_root = Path(__file__).resolve().parent.parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+from scripts.organize_ebooks import classify_file, load_overrides, EBOOK_ROOT
+from send2trash import send2trash
 
 class IngestionView(ctk.CTkFrame):
     def __init__(self, master, db_manager, cloud_client, **kwargs):
@@ -49,10 +48,8 @@ class IngestionView(ctk.CTkFrame):
         self.task_queue = queue.Queue()
         self._start_workers(2)  # Cấu hình 2 worker chạy ngầm song song
         
-        # Init predefined physical folders
-        self.lib_dir = get_user_data_dir() / "library"
-        for cat in PREDEFINED_CATEGORIES:
-            (self.lib_dir / cat['id']).mkdir(parents=True, exist_ok=True)
+        # Use physical Ebooks root
+        self.lib_dir = EBOOK_ROOT
             
         self._init_header()
         self._init_controls()
@@ -140,6 +137,22 @@ class IngestionView(ctk.CTkFrame):
         for widget in self.ingestion_frame.winfo_children():
             widget.destroy()
 
+    def _get_dynamic_categories(self):
+        cats = []
+        bio_dir = self.lib_dir / "Biology"
+        if bio_dir.exists():
+            for d in bio_dir.iterdir():
+                if d.is_dir():
+                    cats.append({"id": f"Biology/{d.name}", "name": f"Sinh học: {d.name}", "desc": "Kho sinh học", "path": d})
+        
+        not_bio = self.lib_dir / "_Review_Not_Biology"
+        if not_bio.exists(): cats.append({"id": "_Review_Not_Biology", "name": "Not Biology", "desc": "Cần xem lại", "path": not_bio})
+        
+        unclass = self.lib_dir / "_UNCLASSIFIED"
+        if unclass.exists(): cats.append({"id": "_UNCLASSIFIED", "name": "Chưa phân loại", "desc": "Kho chung", "path": unclass})
+        
+        return cats
+
     def _load_dashboard_data(self):
         for widget in self.dashboard_frame.winfo_children():
             widget.destroy()
@@ -149,10 +162,12 @@ class IngestionView(ctk.CTkFrame):
         all_books = self.db_manager.get_all_books()
         db_path_map = {Path(b['source_path']).resolve(): b for b in all_books if b.get('source_path')}
         
+        dynamic_cats = self._get_dynamic_categories()
+        
         row_idx = 0
         col_idx = 0
-        for cat in PREDEFINED_CATEGORIES:
-            cat_path = self.lib_dir / cat['id']
+        for cat in dynamic_cats:
+            cat_path = cat["path"]
             files = [f for f in cat_path.iterdir() if f.is_file() and f.suffix.lower() in ['.pdf', '.epub']] if cat_path.exists() else []
             
             card = self._create_category_card(self.dashboard_frame, cat, cat_path, files, db_path_map)
@@ -161,7 +176,7 @@ class IngestionView(ctk.CTkFrame):
             col_idx += 1
             if col_idx > 1:
                 col_idx = 0
-                row_idx += 2 
+                row_idx += 2
                 
     def _create_category_card(self, parent, cat, path, files, db_path_map):
         card = ctk.CTkFrame(parent, fg_color=Colors.BG_APP, border_width=1, border_color=Colors.BORDER)
@@ -221,10 +236,9 @@ class IngestionView(ctk.CTkFrame):
             ctk.CTkLabel(actions_frame, text=db_status, font=Fonts.BODY, text_color=status_color).pack(side="left", padx=Spacing.SM)
             
             is_dirty = ('z-lib' in f.name.lower() or '1lib' in f.name.lower() or '_1' in f.name.lower())
-            if is_dirty and current_cat_id in MAIN_CATS:
-                btn_clean = ctk.CTkButton(actions_frame, text="✨ Chuẩn hóa AI", width=100, height=24, fg_color=Colors.SUCCESS,
-                                        command=lambda p=f.resolve(), b=b_info, r=f_row: self._clean_single_file(p, b, r))
-                btn_clean.pack(side="left", padx=2)
+            btn_clean = ctk.CTkButton(actions_frame, text="✨ Chuẩn hóa AI" if is_dirty else "🔄 AI Phân loại lại", width=100, height=24, fg_color=Colors.SUCCESS if is_dirty else Colors.PRIMARY,
+                                    command=lambda p=f.resolve(), b=b_info, r=f_row: self._clean_single_file(p, b, r))
+            btn_clean.pack(side="left", padx=2)
             
             btn_move = ctk.CTkButton(actions_frame, text="🔄 Đổi Kho", width=70, height=24, fg_color=Colors.PRIMARY,
                                     command=lambda p=f.resolve(), b=b_info, r=f_row: self._show_move_menu(p, b, r))
@@ -237,7 +251,8 @@ class IngestionView(ctk.CTkFrame):
 
     def _show_move_menu(self, file_path: Path, db_info, row_widget):
         menu = tk.Menu(self, tearoff=0)
-        for cat in PREDEFINED_CATEGORIES:
+        dynamic_cats = self._get_dynamic_categories()
+        for cat in dynamic_cats:
             menu.add_command(label=f"Chuyển sang: {cat['name']}", command=lambda cid=cat['id'], p=file_path, b=db_info, rw=row_widget: self._move_file_and_ingest(cid, p, b, rw))
         
         x = self.winfo_pointerx()
@@ -245,44 +260,27 @@ class IngestionView(ctk.CTkFrame):
         menu.tk_popup(x, y)
         
     def _move_file_and_ingest(self, target_cat_id: str, file_path: Path, db_info, row_widget):
-        if target_cat_id == "Khac":
-            target_dir = self.lib_dir / target_cat_id
-            target_path = target_dir / file_path.name
-            counter = 1
-            while target_path.exists() and target_path.resolve() != file_path.resolve():
-                target_path = target_dir / f"{file_path.stem}_{counter}{file_path.suffix}"
-                counter += 1
-            shutil.move(str(file_path), str(target_path))
-            if db_info:
-                conn = self.db_manager._get_connection()
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM books WHERE id = ?", (db_info['id'],))
-                conn.commit()
-            self.after(500, self._load_dashboard_data)
-        else:
-            for child in row_widget.winfo_children():
-                if isinstance(child, ctk.CTkFrame):
-                    for btn in child.winfo_children():
-                        if isinstance(btn, ctk.CTkButton) and "Đổi Kho" in btn.cget("text"):
-                            btn.configure(text="⏳ Xếp hàng...", state="disabled")
-            self.task_queue.put(lambda: self._manual_ingest_worker(target_cat_id, file_path, db_info))
+        for child in row_widget.winfo_children():
+            if isinstance(child, ctk.CTkFrame):
+                for btn in child.winfo_children():
+                    if isinstance(btn, ctk.CTkButton) and "Đổi Kho" in btn.cget("text"):
+                        btn.configure(text="⏳ Xếp hàng...", state="disabled")
+        self.task_queue.put(lambda: self._manual_ingest_worker(target_cat_id, file_path, db_info))
 
     def _manual_ingest_worker(self, target_cat_id, file_path: Path, db_info):
         try:
             ext = file_path.suffix.lower().replace('.', '')
             text_sample = self._get_sample_text(str(file_path), ext)
+            meta = self.ai_classifier.analyze_book(text_sample) if text_sample else {}
             
-            meta = self.ai_classifier.analyze_book(text_sample)
-            extracted_title = meta.get('title', '').strip()
-            if not extracted_title:
-                extracted_title = file_path.stem
-                
+            extracted_title = (meta.get('title') or '').strip() or file_path.stem
             safe_title = "".join(c for c in extracted_title if c.isalnum() or c in (' ', '-', '_')).rstrip()
             if not safe_title: safe_title = file_path.stem
             
             global_log(f"[MANUAL INGEST] Bắt đầu di chuyển: {file_path.name} -> {safe_title}")
             
             target_dir = self.lib_dir / target_cat_id
+            target_dir.mkdir(parents=True, exist_ok=True)
             target_path = target_dir / f"{safe_title}{file_path.suffix}"
             counter = 1
             while target_path.exists() and target_path.resolve() != file_path.resolve():
@@ -290,22 +288,23 @@ class IngestionView(ctk.CTkFrame):
                 counter += 1
                 
             shutil.move(str(file_path), str(target_path))
+            category_name = target_cat_id.replace("Biology/", "") if "Biology/" in target_cat_id else target_cat_id
             
             if db_info:
                 conn = self.db_manager._get_connection()
                 cursor = conn.cursor()
-                cursor.execute("UPDATE books SET title = ?, author = ?, published_year = ?, source_path = ? WHERE id = ?", 
-                               (meta.get('title', safe_title), meta.get('author', ''), str(meta.get('year', '')), str(target_path.absolute()), db_info['id']))
+                cursor.execute("UPDATE books SET title = ?, author = ?, published_year = ?, source_path = ?, category = ? WHERE id = ?", 
+                               (meta.get('title', safe_title), meta.get('author', ''), str(meta.get('year', '')), str(target_path.absolute()), category_name, db_info['id']))
                 conn.commit()
             else:
-                # BYPASS DEEP PARSING FOR INGESTION SPEED
                 self.db_manager.save_book_batch(
                     book_title=meta.get('title', safe_title),
                     author=meta.get('author', 'Không rõ'),
                     source_path=str(target_path.absolute()),
-                    cover_path='', # Cover and deep text parsing deferred to Phase 2 (Electron Reader)
+                    cover_path='', 
                     structured_content=[], 
-                    published_year=str(meta.get('year', ''))
+                    published_year=str(meta.get('year', '')),
+                    category=category_name
                 )
             self.after(0, self._load_dashboard_data)
         except Exception as e:
@@ -323,42 +322,52 @@ class IngestionView(ctk.CTkFrame):
         try:
             ext = file_path.suffix.lower().replace('.', '')
             text_sample = self._get_sample_text(str(file_path), ext)
-            meta = self.ai_classifier.analyze_book(text_sample)
+            meta = self.ai_classifier.analyze_book(text_sample) if text_sample else {}
             
-            extracted_title = meta.get('title', '').strip()
-            if not extracted_title:
-                extracted_title = file_path.stem
-                
+            extracted_title = (meta.get('title') or '').strip() or file_path.stem
             safe_title = "".join(c for c in extracted_title if c.isalnum() or c in (' ', '-', '_')).rstrip()
             if not safe_title: safe_title = file_path.stem
             
-            global_log(f"[RENAME LOG] File gốc: {file_path.name} -> Tên mới: {safe_title}{file_path.suffix}")
+            overrides = load_overrides()
+            cat_folder = classify_file(safe_title, overrides)
             
-            target_path = file_path.parent / f"{safe_title}{file_path.suffix}"
+            if cat_folder == "_NOT_BIOLOGY":
+                target_dir = self.lib_dir / "_Review_Not_Biology"
+            elif cat_folder == "_UNCLASSIFIED":
+                target_dir = self.lib_dir / "_UNCLASSIFIED"
+            elif cat_folder == "_SKIP":
+                target_dir = self.lib_dir / "_SKIP"
+            else:
+                target_dir = self.lib_dir / "Biology" / cat_folder
+                
+            target_dir.mkdir(parents=True, exist_ok=True)
+            target_path = target_dir / f"{safe_title}{file_path.suffix}"
             counter = 1
             while target_path.exists() and target_path.resolve() != file_path.resolve():
-                target_path = file_path.parent / f"{safe_title}_{counter}{file_path.suffix}"
+                target_path = target_dir / f"{safe_title}_{counter}{file_path.suffix}"
                 counter += 1
                 
             shutil.move(str(file_path), str(target_path))
+            category_name = cat_folder
+            
+            global_log(f"[AI ROUTING] {file_path.name} -> {target_path.absolute()}")
             
             if db_info:
                 conn = self.db_manager._get_connection()
                 cursor = conn.cursor()
-                cursor.execute("UPDATE books SET title = ?, author = ?, published_year = ?, source_path = ? WHERE id = ?", 
-                               (meta.get('title', safe_title), meta.get('author', ''), str(meta.get('year', '')), str(target_path.absolute()), db_info['id']))
+                cursor.execute("UPDATE books SET title = ?, author = ?, published_year = ?, source_path = ?, category = ? WHERE id = ?", 
+                               (meta.get('title', safe_title), meta.get('author', ''), str(meta.get('year', '')), str(target_path.absolute()), category_name, db_info['id']))
                 conn.commit()
             else:
-                # Just in case it's not in DB yet (e.g. batch clean)
                 self.db_manager.save_book_batch(
                     book_title=meta.get('title', safe_title),
                     author=meta.get('author', 'Không rõ'),
                     source_path=str(target_path.absolute()),
                     cover_path='',
                     structured_content=[], 
-                    published_year=str(meta.get('year', ''))
+                    published_year=str(meta.get('year', '')),
+                    category=category_name
                 )
-                
             self.after(0, self._load_dashboard_data)
         except Exception as e:
             print(f"Lỗi AI Clean Single: {e}")
@@ -371,8 +380,9 @@ class IngestionView(ctk.CTkFrame):
         all_books = self.db_manager.get_all_books()
         db_path_map = {Path(b['source_path']).resolve(): b for b in all_books if b.get('source_path')}
         
-        for cat_id in MAIN_CATS:
-            cat_path = self.lib_dir / cat_id
+        dynamic_cats = self._get_dynamic_categories()
+        for cat in dynamic_cats:
+            cat_path = cat["path"]
             if not cat_path.exists(): continue
             for f in cat_path.iterdir():
                 if f.is_file() and f.suffix.lower() in ['.pdf', '.epub']:
@@ -390,18 +400,11 @@ class IngestionView(ctk.CTkFrame):
             cursor.execute("DELETE FROM books WHERE id = ?", (book_id,))
             conn.commit()
             
-            quar_dir = get_user_data_dir() / "quarantine"
-            quar_dir.mkdir(parents=True, exist_ok=True)
-            dest = quar_dir / file_path.name
-            counter = 1
-            while dest.exists():
-                dest = quar_dir / f"{file_path.stem}_{counter}{file_path.suffix}"
-                counter += 1
-            shutil.move(str(file_path), str(dest))
+            send2trash(str(file_path))
             row_widget.destroy()
             self.after(500, self._load_dashboard_data)
         except Exception as e:
-            print(f"Lỗi khi Gỡ bỏ: {e}")
+            print(f"Lỗi khi Xóa sách: {e}")
 
     def _handle_scan_btn_click(self):
         if self.btn_scan.cget("text") == "🛑 Dừng Lại":
@@ -455,8 +458,9 @@ class IngestionView(ctk.CTkFrame):
                 if path:
                     known_filenames[os.path.basename(path).lower()] = b
                     
-            for cat in PREDEFINED_CATEGORIES:
-                cat_path = self.lib_dir / cat['id']
+            dynamic_cats = self._get_dynamic_categories()
+            for cat in dynamic_cats:
+                cat_path = cat["path"]
                 if cat_path.exists():
                     for existing_f in cat_path.iterdir():
                         if existing_f.is_file() and existing_f.name.lower() not in known_filenames:
@@ -527,6 +531,10 @@ class IngestionView(ctk.CTkFrame):
         )
         summary.pack(anchor="w", padx=Spacing.MD, pady=Spacing.MD)
         
+        if db_dupes > 0 or dupes > 0:
+            btn_del_all = ctk.CTkButton(self.ingestion_frame, text="🗑️ Xóa tất cả trùng lặp", font=Fonts.BUTTON, fg_color=Colors.DANGER, hover_color=Colors.DANGER_HOVER, command=self._delete_all_duplicates)
+            btn_del_all.pack(anchor="w", padx=Spacing.MD, pady=(0, Spacing.MD))
+        
         if db_dupes > 0:
             db_frame = ctk.CTkFrame(self.ingestion_frame, fg_color=Colors.BG_APP, border_width=1, border_color=Colors.WARNING)
             db_frame.pack(fill="x", padx=Spacing.MD, pady=Spacing.SM)
@@ -535,7 +543,7 @@ class IngestionView(ctk.CTkFrame):
                 f_frame = ctk.CTkFrame(db_frame, fg_color="transparent")
                 f_frame.pack(fill="x", padx=Spacing.MD, pady=Spacing.XS)
                 ctk.CTkLabel(f_frame, text=f"{f['name']}", font=Fonts.BODY).pack(side="left")
-                ctk.CTkButton(f_frame, text="🔒 Cô lập", width=60, fg_color=Colors.WARNING, height=24, command=lambda path=f['path'], row_w=f_frame: self._quarantine_file(path, row_w)).pack(side="right", padx=Spacing.SM)
+                ctk.CTkButton(f_frame, text="🗑️ Xóa", width=60, fg_color=Colors.DANGER, height=24, command=lambda path=f['path'], row_w=f_frame: self._quarantine_file(path, row_w)).pack(side="right", padx=Spacing.SM)
                 
         for size, files in self.duplicate_groups.items():
             group_frame = ctk.CTkFrame(self.ingestion_frame, fg_color=Colors.BG_APP, border_width=1, border_color=Colors.DANGER)
@@ -546,25 +554,30 @@ class IngestionView(ctk.CTkFrame):
                 f_frame = ctk.CTkFrame(group_frame, fg_color="transparent")
                 f_frame.pack(fill="x", padx=Spacing.MD, pady=Spacing.XS)
                 ctk.CTkLabel(f_frame, text=f"{f['name']}", font=Fonts.BODY).pack(side="left")
-                ctk.CTkButton(f_frame, text="🔒 Cô lập", width=60, fg_color=Colors.DANGER, height=24, command=lambda path=f['path'], row_w=f_frame: self._quarantine_file(path, row_w)).pack(side="right", padx=Spacing.SM)
+                ctk.CTkButton(f_frame, text="🗑️ Xóa", width=60, fg_color=Colors.DANGER, height=24, command=lambda path=f['path'], row_w=f_frame: self._quarantine_file(path, row_w)).pack(side="right", padx=Spacing.SM)
                 
         self._render_ai_step()
         
-    def _quarantine_file(self, file_path, widget):
+    def _quarantine_file(self, file_path, widget=None):
         try:
-            quar_dir = get_user_data_dir() / "quarantine"
-            quar_dir.mkdir(parents=True, exist_ok=True)
             p = Path(file_path)
-            dest = quar_dir / p.name
-            counter = 1
-            while dest.exists():
-                dest = quar_dir / f"{p.stem}_{counter}{p.suffix}"
-                counter += 1
-            shutil.move(str(p), str(dest))
-            widget.destroy()
-            self._insert_log(f"[CÔ LẬP] Đã di chuyển: {p.name} -> quarantine/")
+            send2trash(str(p))
+            if widget:
+                widget.destroy()
+            self._insert_log(f"[XÓA] Đã chuyển vào Thùng rác: {p.name}")
         except Exception as e:
-            self._insert_log(f"[LỖI CÔ LẬP] {e}")
+            self._insert_log(f"[LỖI XÓA] {e}")
+
+    def _delete_all_duplicates(self):
+        for f in self.db_duplicates:
+            self._quarantine_file(f['path'])
+        for files in self.duplicate_groups.values():
+            for f in files:
+                self._quarantine_file(f['path'])
+        self.db_duplicates = []
+        self.duplicate_groups = {}
+        self._clear_ingestion_results()
+        self._render_results()
 
     def _render_ai_step(self):
         unique_sizes = {}
@@ -649,95 +662,92 @@ class IngestionView(ctk.CTkFrame):
         self.btn_ai.configure(state="normal", text="✨ Bắt đầu Phân loại (Vertex AI)", fg_color=Colors.PRIMARY, hover_color=Colors.PRIMARY_HOVER)
 
     def _ai_worker(self):
-        if not self.ai_classifier.cloud_client.is_ready:
-            self._safe_ai_log("[LỖI] Vertex AI chưa được cấu hình. Vui lòng cấu hình trong Cài đặt.")
-            self.after(0, self._reset_ai_btn)
-            return
-            
-        self._safe_ai_log(f"Bắt đầu xử lý {len(self.clean_files)} sách bằng Vertex AI...")
-        
-        all_books = self.db_manager.get_all_books()
-        db_titles = {b['title'].lower().strip() for b in all_books if b.get('title')}
-        
-        for i, f in enumerate(self.clean_files):
-            if self._cancel_scan:
-                self._safe_ai_log("\n[!] Đã dừng luồng AI bởi người dùng.")
-                break
+        try:
+            if not self.ai_classifier.cloud_client.is_ready:
+                self._safe_ai_log("[LỖI] Vertex AI chưa được cấu hình. Vui lòng cấu hình trong Cài đặt.")
+                return
                 
-            self._safe_ai_log(f"\n[{i+1}] Fast Sampling file: {f['name']}...")
+            self._safe_ai_log(f"Bắt đầu xử lý {len(self.clean_files)} sách bằng Vertex AI + Rule Engine...")
+            all_books = self.db_manager.get_all_books()
+            db_titles = {b['title'].lower().strip() for b in all_books if b.get('title')}
+            overrides = load_overrides()
             
-            # --- 1. FAST SAMPLING ---
-            text_sample = self._get_sample_text(f['path'], f['ext'])
-            if not text_sample.strip():
-                self._safe_ai_log("  -> [BỎ QUA] Không trích xuất được text.")
-                continue
+            for i, f in enumerate(self.clean_files):
+                if self._cancel_scan:
+                    self._safe_ai_log("\n[!] Đã dừng luồng AI bởi người dùng.")
+                    break
+                    
+                self._safe_ai_log(f"\n[{i+1}] Fast Sampling: {f['name']}...")
+                text_sample = self._get_sample_text(f['path'], f['ext'])
+                if not text_sample.strip():
+                    self._safe_ai_log("  -> [BỎ QUA] Không trích xuất được text.")
+                    continue
+                    
+                if self._cancel_scan: break
                 
-            if self._cancel_scan: break
-            
-            # --- 2. AI CLASSIFICATION & METADATA ---
-            meta = self.ai_classifier.analyze_book(text_sample)
-            cat_id = meta.get("category_id", "Khac")
-            self._safe_ai_log(f"  -> Thể loại: {cat_id} ({meta.get('reason', '')})")
-            
-            if self._cancel_scan: break
-            
-            # --- FIREWALL: BỎ QUA CHUẨN HÓA NẾU LÀ KHO 'Khac' ---
-            if cat_id == "Khac":
-                self._safe_ai_log("  -> [BỎ QUA METADATA] Sách vào kho Khác, giữ nguyên tên gốc.")
-            else:
-                self._safe_ai_log(f"  -> Metadata: {meta}")
-            
-            extracted_title = meta.get('title', '').strip()
-            if extracted_title and extracted_title.lower() in db_titles:
-                self._safe_ai_log(f"  -> [BỎ QUA] Sách '{extracted_title}' đã tồn tại trong Database!")
-                continue
-            
-            # --- 4. DI CHUYỂN FILE VẬT LÝ ---
-            lib_dir = self.lib_dir / cat_id
-            lib_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Nếu là Khác, giữ nguyên tên gốc. Nếu là Sinh Học, lấy tên chuẩn.
-            safe_title = "".join(c for c in meta.get('title', f['name']) if c.isalnum() or c in (' ', '-', '_')).rstrip() if cat_id != "Khac" else f['name']
-            if not safe_title: safe_title = "Unknown_Book"
-            dest_filename = f"{safe_title}.{f['ext']}" if cat_id != "Khac" else safe_title
-            dest_path = lib_dir / dest_filename
-            
-            counter = 1
-            while dest_path.exists():
-                if cat_id != "Khac":
-                    dest_path = lib_dir / f"{safe_title}_{counter}.{f['ext']}"
+                meta = self.ai_classifier.analyze_book(text_sample)
+                extracted_title = (meta.get('title') or '').strip() or Path(f['path']).stem
+                safe_title = "".join(c for c in extracted_title if c.isalnum() or c in (' ', '-', '_')).rstrip()
+                if not safe_title: safe_title = Path(f['path']).stem
+                
+                cat_folder = classify_file(safe_title, overrides)
+                self._safe_ai_log(f"  -> Title AI: {safe_title}")
+                self._safe_ai_log(f"  -> Keyword Match Category: {cat_folder}")
+                
+                if safe_title.lower() in db_titles:
+                    self._safe_ai_log(f"  -> [BỎ QUA] Đã tồn tại trong DB! Đang chuyển vào Thùng rác...")
+                    try:
+                        send2trash(str(f['path']))
+                        self._safe_ai_log(f"  -> [XÓA] Đã dọn dẹp file tàn dư.")
+                    except Exception as e:
+                        self._safe_ai_log(f"  -> [LỖI] Xóa file: {e}")
+                    continue
+                
+                if cat_folder == "_NOT_BIOLOGY":
+                    target_dir = self.lib_dir / "_Review_Not_Biology"
+                elif cat_folder == "_UNCLASSIFIED":
+                    target_dir = self.lib_dir / "_UNCLASSIFIED"
+                elif cat_folder == "_SKIP":
+                    target_dir = self.lib_dir / "_SKIP"
                 else:
-                    dest_path = lib_dir / f"{Path(safe_title).stem}_{counter}{Path(safe_title).suffix}"
-                counter += 1
+                    target_dir = self.lib_dir / "Biology" / cat_folder
+                    
+                target_dir.mkdir(parents=True, exist_ok=True)
+                dest_path = target_dir / f"{safe_title}.{f['ext']}"
+                counter = 1
+                while dest_path.exists():
+                    dest_path = target_dir / f"{safe_title}_{counter}.{f['ext']}"
+                    counter += 1
+                    
+                try:
+                    shutil.move(str(f['path']), str(dest_path))
+                except Exception as e:
+                    self._safe_ai_log(f"  -> [LỖI] Di chuyển file: {e}")
+                    continue
                 
-            self._safe_ai_log(f"  -> [Bước 5] Di chuyển sách vào kho: {dest_path.absolute()}")
-            try:
-                shutil.copy2(f['path'], dest_path)
-            except Exception as e:
-                self._safe_ai_log(f"  -> [LỖI] Lỗi copy file: {e}")
-                continue
-            
-            if self._cancel_scan: break
-            
-            # --- 5. FAST INGEST (BYPASS DEEP PARSING) ---
-            if cat_id != "Khac":
-                self._safe_ai_log(f"  -> [Bước 6] Fast Ingest: Lưu Database (Bỏ qua Deep Parse)...")
+                self._safe_ai_log(f"  -> Đã di chuyển: {dest_path.absolute()}")
+                
                 try:
                     book_id = self.db_manager.save_book_batch(
                         book_title=meta.get('title', safe_title),
                         author=meta.get('author', 'Không rõ'),
                         source_path=str(dest_path.absolute()),
-                        cover_path='', # Cover and content deep parse deferred to Reader View
+                        cover_path='',
                         structured_content=[], 
-                        published_year=str(meta.get('year', ''))
+                        published_year=str(meta.get('year', '')),
+                        category=cat_folder
                     )
-                    self._safe_ai_log(f"  -> Hoàn tất Fast Ingest! (Book ID: {book_id})")
+                    self._safe_ai_log(f"  -> Fast Ingest OK! (ID: {book_id})")
                 except Exception as e:
                     self._safe_ai_log(f"  -> [LỖI] Lưu Database: {e}")
-            else:
-                self._safe_ai_log(f"  -> [Bước 6] Bỏ qua Ingest vì là kho Khác.")
-            
-        self._safe_ai_log("\nHoàn tất quá trình xử lý AI!")
-        self.after(0, self._reset_ai_btn)
-        self.after(500, self._load_dashboard_data)
+                
+            self._safe_ai_log("\nHoàn tất xử lý AI!")
+        except Exception as e:
+            import traceback
+            err_msg = traceback.format_exc()
+            self._safe_ai_log(f"\n[CRITICAL LỖI LUỒNG AI] Đã xảy ra lỗi nghiêm trọng:\n{err_msg}")
+            print(f"Lỗi Thread _ai_worker: {e}")
+        finally:
+            self.after(0, self._reset_ai_btn)
+            self.after(500, self._load_dashboard_data)
 
