@@ -18,6 +18,12 @@ import time
 from typing import Optional, Tuple, List, Dict
 from pathlib import Path
 
+# Ensure UTF-8 output on Windows console
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding='utf-8')
+if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding='utf-8')
+
 # Add project root to path so we can import src
 project_root = Path(__file__).resolve().parent.parent
 if str(project_root) not in sys.path:
