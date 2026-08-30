@@ -18,6 +18,16 @@ Dự án này tuân theo [Keep a Changelog](https://keepachangelog.com/en/1.0.0/
     -   Tự động khấu trừ số file rác bị loại bởi ngưỡng `MIN_ARTICLE_BYTES`.
     -   Báo cáo chi tiết vị trí trôi lệch/chênh lệch và trả mã exit code phù hợp (`exit 0` khi khớp, `exit 1` khi lệch).
 
+-   **Rút `JINA_API_KEY` khỏi mã nguồn (`core/database.py`)**:
+    -   Key hard-code ở `qmd_search()` chuyển sang đọc bằng `os.getenv('JINA_API_KEY')`, lưu trong `.env` (đã gitignore).
+    -   Thêm `vr-cuongjsl-*.json` (service account key) vào `.gitignore`.
+-   **Làm sạch thẻ ảnh trong DB (`scripts/clean_image_anchors.py`)**:
+    -   `UPDATE` 886 article dính `[Image Anchor: ...]` trong `articles.content_text`, tính lại `word_count`.
+    -   Không `DELETE` bản ghi nào: `COUNT(*) FROM articles` giữ nguyên trước và sau.
+    -   Không gọi `rebuild_fts_index()` — trigger `articles_fts_update` tự đồng bộ.
+-   **Kết quả nạp kho Thực vật**: 234 thư mục → 230 cuốn gắn `site_category='plant'`
+    (4 cuốn còn lại là sách ảnh, 0 file ≥400 byte). Sách `plant` 63 → 241, article `plant` (leaf) 11.188 → 27.432.
+
 ## [2.3.0] - 2026-08-22
 
 ### 📚 Hệ thống Quản lý Sách (Ebook Ingestion Pipeline V2)

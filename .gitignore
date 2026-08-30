@@ -64,3 +64,6 @@ WORKFLOW.md
 *.env
 *.secret
 *.gguf
+
+# Service account key (chua secret - khong duoc commit)
+vr-cuongjsl-*.json

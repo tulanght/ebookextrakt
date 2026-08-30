@@ -1106,9 +1106,11 @@ class DatabaseManager:
         """
         import subprocess
         import os
+        from dotenv import load_dotenv
+        load_dotenv()
         env = os.environ.copy()
         env['QMD_EMBED_PROVIDER'] = 'jina'
-        env['JINA_API_KEY'] = 'jina_ed71ffbdfe574f1db4bde55234c89d2f8JUlgQYMwmb6n7SdAucVibHQrQO3'
+        env['JINA_API_KEY'] = os.getenv('JINA_API_KEY', '')
         env['QMD_JINA_MODEL'] = 'jina-embeddings-v5-text-small'
         env['QMD_JINA_DIMENSION'] = '1024'
 
