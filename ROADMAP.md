@@ -58,12 +58,14 @@ Phát triển `ExtractPDF-EPUB App` thành một **Trung tâm Nội dung Thông 
 * **[ ] (Tương lai) Tích hợp Mạng xã hội:**
     * Nghiên cứu và phát triển tính năng đăng bài lên Facebook.
 
-### Giai đoạn 7: Context Retrieval (FTS5 Search)
+### Giai đoạn 7: Context Retrieval (FTS5 Search & Corpus Reconciliation)
 - [x] Metadata audit: phát hiện category field confusion
 - [x] `site_category` backfill vào content.md + books DB table
 - [x] FTS5 virtual table + auto-sync triggers
 - [x] `search_content()` method in DatabaseManager (filter by site_category)
 - [x] `scripts/search.py` CLI interface
+- [x] `tools/markdown_exporter.py`: strip `[Image Anchor:]` and export `content.md` for plant corpus
+- [x] `scripts/reconcile_corpus.py`: 4-way corpus integrity reconciliation tool
 - [ ] Integration với Antigravity article pipeline
 
 ---

@@ -5,6 +5,19 @@ Dự án này tuân theo [Keep a Changelog](https://keepachangelog.com/en/1.0.0/
 
 ---
 
+## [2.4.0] - 2026-08-30
+
+### 🌿 Quản lý & Đối soát Kho Sách Thực vật (Corpus Ingestion & Reconciliation)
+-   **Markdown Exporter Tag Strip (`markdown_exporter.py`)**:
+    -   Tự động loại bỏ thẻ `[Image Anchor: ...]` khi sinh file `content.md` từ `content.txt` bằng regex `\[Image Anchor:[^\]]*\]`.
+    -   Bảo vệ dữ liệu gốc: Giữ nguyên vẹn 100% `content.txt` làm master chỉ đọc trên đĩa.
+    -   Đồng bộ ngưỡng bỏ file rác `MIN_ARTICLE_BYTES` (400 bytes) qua `stat().st_size`.
+    -   Đã xuất thành công 25.283 file `.md` cho kho `D:\Garden Home and Plants`.
+-   **Công cụ Đối soát Toàn vẹn Kho (`scripts/reconcile_corpus.py`)**:
+    -   Viết mới công cụ đối soát 4 chiều: số `content.txt` trên đĩa, số `content.md` trên đĩa, số article trong `extract.db`, và số document trong QMD index (`~/.cache/qmd/index.sqlite`).
+    -   Tự động khấu trừ số file rác bị loại bởi ngưỡng `MIN_ARTICLE_BYTES`.
+    -   Báo cáo chi tiết vị trí trôi lệch/chênh lệch và trả mã exit code phù hợp (`exit 0` khi khớp, `exit 1` khi lệch).
+
 ## [2.3.0] - 2026-08-22
 
 ### 📚 Hệ thống Quản lý Sách (Ebook Ingestion Pipeline V2)
