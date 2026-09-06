@@ -6,6 +6,14 @@
 ## Tầm nhìn Dự án
 Phát triển `ExtractPDF-EPUB App` thành một **Trung tâm Nội dung Thông minh (Intelligent Content Hub)**, không chỉ bóc tách dữ liệu một cách chính xác mà còn hỗ trợ tối ưu hóa, quản lý, và tự động hóa các quy trình sản xuất nội dung số.
 
+## Ổn định Python trước Electron
+
+- [x] Thiết lập baseline test cho Translation, Queue, Search UI và Ingestion Safety.
+- [x] Bổ sung regression test cho worker ingestion bị thiếu và fallback xóa vĩnh viễn.
+- [ ] Sửa hai lỗi production và đưa toàn bộ test suite về GREEN.
+- [ ] Bổ sung coverage cho Database, EPUB, Storage và luồng ingestion tích hợp.
+- [ ] Chỉ đánh giá lại Electron sau khi phiên bản Python đáp ứng ổn định nhu cầu thực tế.
+
 ---
 ## Lộ trình Phát triển (Các Giai đoạn Tiếp theo)
 

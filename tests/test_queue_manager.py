@@ -7,11 +7,17 @@ from src.extract_app.core.queue_manager import ChapterQueueManager, ChapterQueue
 def mock_deps():
     translation_service = Mock()
     # Mock successful translation by default
-    translation_service.translate_text.return_value = "Translated Text"
+    translation_service.translate_text.return_value = (
+        "Translated Text",
+        {"in": 10, "out": 20},
+        None,
+    )
     
     db_manager = Mock()
     settings_manager = Mock()
-    settings_manager.get.side_effect = lambda key, default=None: default
+    settings_manager.get.side_effect = (
+        lambda key, default=None: 0.0 if key == "chunk_delay" else default
+    )
     
     return translation_service, db_manager, settings_manager
 
@@ -108,8 +114,8 @@ def test_worker_processing(queue_manager, mock_deps):
 
 def test_worker_translation_failure(queue_manager, mock_deps):
     ts, db, sm = mock_deps
-    # Simulate a failure returning None
-    ts.translate_text.return_value = None
+    # Simulate the current TranslationService failure contract.
+    ts.translate_text.return_value = (None, {}, "Translation failed")
     
     item = ChapterQueueItem(1, "S1", 100, "C1")
     queue_manager.enqueue(item)

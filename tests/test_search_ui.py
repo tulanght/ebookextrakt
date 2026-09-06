@@ -9,9 +9,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../s
 
 from extract_app.modules.ui.search_view import SearchView
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def mock_master():
-    # Simple hidden root to avoid drawing to screen
+    """Provide one hidden Tk root for the module to avoid Tcl teardown races."""
     root = ctk.CTk()
     root.withdraw()
     yield root
@@ -19,7 +19,12 @@ def mock_master():
 
 @pytest.fixture
 def mock_db_manager():
-    return MagicMock()
+    manager = MagicMock()
+    manager.get_search_stats.return_value = {
+        "total_articles": 2,
+        "categories": ["animal", "plant"],
+    }
+    return manager
 
 @pytest.fixture
 def search_view(mock_master, mock_db_manager):

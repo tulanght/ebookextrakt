@@ -5,6 +5,16 @@ Dự án này tuân theo [Keep a Changelog](https://keepachangelog.com/en/1.0.0/
 
 ---
 
+## [Unreleased]
+
+### Testing
+
+- Added regression coverage for ingestion worker wiring and recoverable duplicate cleanup.
+- Updated translation and queue tests to the current three-value `TranslationService`
+  contract and `ChunkingStrategy` facade.
+- Stabilized Search UI fixtures with concrete database statistics and a shared hidden Tk root.
+- Recorded the TDD RED baseline: 129 passed and 2 expected production failures.
+
 ## [2.4.0] - 2026-08-30
 
 ### 🌿 Quản lý & Đối soát Kho Sách Thực vật (Corpus Ingestion & Reconciliation)
