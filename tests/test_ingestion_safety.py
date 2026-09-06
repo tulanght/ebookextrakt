@@ -1,7 +1,7 @@
 # --------------------------------------------------------------------------------
 # Project: ExtractPDF-EPUB
 # File: tests/test_ingestion_safety.py
-# Version: 1.1.0
+# Version: 1.2.0
 # Author: Codex
 # Description: Regression tests for ingestion worker wiring and recoverable cleanup.
 # --------------------------------------------------------------------------------
@@ -36,8 +36,9 @@ def test_quarantine_keeps_file_when_recycle_bin_fails(tmp_path: Path) -> None:
         IngestionView._quarantine_file(view, ebook)
 
     assert ebook.exists()
-    view._insert_log.assert_called_once()
-    assert "LỖI" in view._insert_log.call_args.args[0]
+    view._insert_log.assert_not_called()
+    view._safe_log.assert_called_once()
+    assert "LỖI" in view._safe_log.call_args.args[0]
 
 
 def test_quarantine_uses_recycle_bin_on_success(tmp_path: Path) -> None:
@@ -50,8 +51,23 @@ def test_quarantine_uses_recycle_bin_on_success(tmp_path: Path) -> None:
         IngestionView._quarantine_file(view, ebook)
 
     trash.assert_called_once_with(str(ebook).replace("/", "\\"))
-    view._insert_log.assert_called_once()
-    assert "[XÓA]" in view._insert_log.call_args.args[0]
+    view._insert_log.assert_not_called()
+    view._safe_log.assert_called_once()
+    assert "[XÓA]" in view._safe_log.call_args.args[0]
+
+
+def test_quarantine_schedules_widget_cleanup_on_tk_thread(tmp_path: Path) -> None:
+    """A worker-triggered cleanup must schedule widget destruction via Tk."""
+    ebook = tmp_path / "duplicate-book.pdf"
+    ebook.write_bytes(b"pdf content")
+    view = MagicMock()
+    widget = MagicMock()
+
+    with patch("src.extract_app.modules.ui.ingestion_view.send2trash"):
+        IngestionView._quarantine_file(view, ebook, widget)
+
+    widget.destroy.assert_not_called()
+    view.after.assert_called_once_with(0, widget.destroy)
 
 
 def test_ingestion_never_falls_back_to_permanent_unlink() -> None:
@@ -130,6 +146,44 @@ def test_batch_ai_does_not_treat_source_as_duplicate(tmp_path: Path) -> None:
 
     trash.assert_not_called()
     assert source.exists()
+
+
+def test_registered_source_is_preserved_for_duplicate_reconciliation(
+    tmp_path: Path,
+) -> None:
+    """An already-cataloged source must not be recycled without DB reconciliation."""
+    source = tmp_path / "_UNCLASSIFIED" / "Canonical Book.pdf"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"source content")
+    canonical = tmp_path / "Biology" / "Birds" / "Canonical Book.pdf"
+    canonical.parent.mkdir(parents=True)
+    canonical.write_bytes(b"canonical content")
+
+    view = MagicMock()
+    view.lib_dir = tmp_path
+    view._get_sample_text.return_value = "TABLE OF CONTENTS"
+    view.ai_classifier.analyze_book.return_value = {
+        "title": "Canonical Book",
+        "author": "",
+        "year": 2026,
+    }
+
+    with (
+        patch(
+            "src.extract_app.modules.ui.ingestion_view.load_overrides",
+            return_value={},
+        ),
+        patch(
+            "src.extract_app.modules.ui.ingestion_view.classify_file",
+            return_value="Birds",
+        ),
+    ):
+        IngestionView._clean_single_worker(view, source, {"id": 42})
+
+    view._quarantine_file.assert_not_called()
+    view.db_manager._get_connection.assert_not_called()
+    assert source.exists()
+    assert canonical.exists()
 
 
 def test_remove_book_recycles_file_before_committing_database_delete() -> None:
