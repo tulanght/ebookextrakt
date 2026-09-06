@@ -65,5 +65,11 @@ WORKFLOW.md
 *.secret
 *.gguf
 
-# Service account key (chua secret - khong duoc commit)
-vr-cuongjsl-*.json
+# Root JSON files are local exports/runtime data or downloaded credentials.
+# Keep structured project JSON inside a named subdirectory such as config/.
+/*.json
+!/.ai-devkit.json
+
+# Preferred locations for all account credentials, regardless of filename.
+/credentials/
+/secrets/
