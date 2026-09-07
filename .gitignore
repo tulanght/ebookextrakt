@@ -29,6 +29,7 @@ Output/
 
 # Log files
 *.txt
+!/requirements.txt
 *.log
 
 # Backup files
@@ -73,3 +74,6 @@ WORKFLOW.md
 # Preferred locations for all account credentials, regardless of filename.
 /credentials/
 /secrets/
+
+# GCP Keys
+config/keys/
