@@ -19,7 +19,7 @@ class AIClassifier:
     def __init__(self, cloud_client: CloudAIClient):
         self.cloud_client = cloud_client
 
-    def analyze_book(self, text_sample: str) -> Dict[str, Any]:
+    def analyze_book(self, text_sample: str, original_filename: str = "") -> Dict[str, Any]:
         """
         Determines the true metadata and category of a book in a single AI call.
         Returns a dict: {category_id, reason, title, author, year}
@@ -28,11 +28,16 @@ class AIClassifier:
             return {"category_id": "Khac", "reason": "Vertex AI chưa cấu hình", "title": "", "author": ""}
             
         prompt = f"""
-        Bạn là một chuyên gia thư viện khoa học. Dưới đây là Mục lục (Table of Contents) hoặc phần đầu của một cuốn sách.
+        Bạn là một chuyên gia thư viện khoa học. Dưới đây là Tên file gốc và Mục lục (Table of Contents) hoặc phần đầu của một cuốn sách.
+        (Lưu ý: Tên file và metadata ẩn thường bị các trang uploader làm giả hoặc xóa mất, do đó hãy phân tích kỹ nội dung TOC để đối chiếu).
+
+        Tên file gốc: {original_filename}
+
         Hãy thực hiện 2 nhiệm vụ:
         
         1. XÁC ĐỊNH METADATA THỰC SỰ:
-        - Lấy Tên sách gốc và Tên Tác giả thực sự.
+        - Lấy Tên sách gốc và Tên Tác giả thực sự. Kết hợp manh mối từ Tên file gốc và Nội dung TOC.
+        - Nếu Tên file gốc là rác (vd: 12345.pdf), hãy bỏ qua và tin tưởng 100% vào TOC.
         - LOẠI BỎ TOÀN BỘ rác của uploader như "z-lib.org", "z-library", "1lib", "libgen", "pdf".
         
         2. PHÂN LOẠI:

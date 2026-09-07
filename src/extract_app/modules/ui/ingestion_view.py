@@ -24,7 +24,7 @@ import sys
 project_root = Path(__file__).resolve().parent.parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
-from scripts.organize_ebooks import classify_file, load_overrides, EBOOK_ROOT
+from scripts.organize_ebooks import classify_file, load_overrides, INBOX_ROOT
 from send2trash import send2trash
 
 class IngestionView(ctk.CTkFrame):
@@ -49,7 +49,7 @@ class IngestionView(ctk.CTkFrame):
         self._start_workers(2)  # Cấu hình 2 worker chạy ngầm song song
         
         # Use physical Ebooks root
-        self.lib_dir = EBOOK_ROOT
+        self.lib_dir = INBOX_ROOT
             
         self._init_header()
         self._init_controls()
@@ -318,19 +318,28 @@ class IngestionView(ctk.CTkFrame):
                         btn.configure(text="⏳ Xếp hàng...", state="disabled")
         self.task_queue.put(lambda: self._clean_single_worker(file_path, db_info))
 
-    def _clean_single_worker(self, file_path: Path, db_info):
+    def _clean_single_worker(self, file_path: Path, db_info: Any) -> None:
+        """Normalize, classify, and move one ebook from a background worker."""
+
         try:
             ext = file_path.suffix.lower().replace('.', '')
             text_sample = self._get_sample_text(str(file_path), ext)
-            meta = self.ai_classifier.analyze_book(text_sample) if text_sample else {}
-            
+            meta = self.ai_classifier.analyze_book(text_sample, file_path.name)
+
             extracted_title = (meta.get('title') or '').strip() or file_path.stem
-            safe_title = "".join(c for c in extracted_title if c.isalnum() or c in (' ', '-', '_')).rstrip()
+            author = (meta.get('author') or '').strip()
+
+            if author and author.lower() != 'không rõ':
+                full_name = f"{extracted_title} - {author}"
+            else:
+                full_name = extracted_title
+
+            safe_title = "".join(c for c in full_name if c.isalnum() or c in (' ', '-', '_', '.', ',')).rstrip()
             if not safe_title: safe_title = file_path.stem
-            
+
             overrides = load_overrides()
             cat_folder = classify_file(safe_title, overrides)
-            
+
             if cat_folder == "_NOT_BIOLOGY":
                 target_dir = self.lib_dir / "_Review_Not_Biology"
             elif cat_folder == "_UNCLASSIFIED":
@@ -339,15 +348,46 @@ class IngestionView(ctk.CTkFrame):
                 target_dir = self.lib_dir / "_SKIP"
             else:
                 target_dir = self.lib_dir / "Biology" / cat_folder
-                
+
             target_dir.mkdir(parents=True, exist_ok=True)
-            target_path = target_dir / f"{safe_title}{file_path.suffix}"
-            counter = 1
-            while target_path.exists() and target_path.resolve() != file_path.resolve():
-                target_path = target_dir / f"{safe_title}_{counter}{file_path.suffix}"
-                counter += 1
-                
-            shutil.move(str(file_path), str(target_path))
+
+            # Physical duplicate check
+            target_file_name = f"{safe_title}{file_path.suffix}"
+            source_path = file_path.resolve()
+            duplicate_path = None
+            for existing in self.lib_dir.rglob(target_file_name):
+                if existing.resolve() != source_path:
+                    duplicate_path = existing
+                    break
+
+            if duplicate_path is not None:
+                if db_info:
+                    message = (
+                        f"[CẦN ĐỐI SOÁT] Giữ nguyên file đã đăng ký DB: "
+                        f"{file_path.name}. Bản vật lý khác: {duplicate_path}."
+                    )
+                    global_log(message)
+                    self._safe_log(message)
+                    self.after(0, self._load_dashboard_data)
+                    return
+
+                global_log(
+                    f"  -> [BỎ QUA] Đã tồn tại bản khác: {duplicate_path}. "
+                    "Chuyển file nguồn vào Thùng rác."
+                )
+                self._quarantine_file(str(file_path))
+                self.after(0, self._load_dashboard_data)
+                return
+
+            target_path = target_dir / target_file_name
+            if target_path.resolve() != source_path:
+                counter = 1
+                while target_path.exists():
+                    target_path = target_dir / f"{safe_title}_{counter}{file_path.suffix}"
+                    counter += 1
+                shutil.move(str(file_path), str(target_path))
+            else:
+                target_path = source_path
             category_name = cat_folder
             
             global_log(f"[AI ROUTING] {file_path.name} -> {target_path.absolute()}")
@@ -379,13 +419,13 @@ class IngestionView(ctk.CTkFrame):
     def _batch_clean_worker(self):
         all_books = self.db_manager.get_all_books()
         db_path_map = {Path(b['source_path']).resolve(): b for b in all_books if b.get('source_path')}
-        
+
         dynamic_cats = self._get_dynamic_categories()
         for cat in dynamic_cats:
             cat_path = cat["path"]
             if not cat_path.exists(): continue
             for f in cat_path.iterdir():
-                if f.is_file() and f.suffix.lower() in ['.pdf', '.epub']:
+                if f.is_file() and f.suffix.lower() in ['.pdf', '.epub', '.mobi', '.azw3']:
                     is_dirty = ('z-lib' in f.name.lower() or '1lib' in f.name.lower() or '_1' in f.name.lower())
                     if is_dirty:
                         self._clean_single_worker(f.resolve(), db_path_map.get(f.resolve()))
@@ -393,17 +433,27 @@ class IngestionView(ctk.CTkFrame):
         self.after(0, lambda: self.btn_batch_clean.configure(state="normal", text="🧹 Dọn dẹp File Rác"))
         self.after(0, self._load_dashboard_data)
 
-    def _remove_and_quarantine(self, book_id, file_path: Path, row_widget):
+    def _remove_and_quarantine(
+        self,
+        book_id: int,
+        file_path: Path,
+        row_widget: Any,
+    ) -> None:
+        """Recycle an ebook before removing its database catalog record."""
+        connection = None
         try:
-            conn = self.db_manager._get_connection()
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM books WHERE id = ?", (book_id,))
-            conn.commit()
-            
             send2trash(str(file_path))
+
+            connection = self.db_manager._get_connection()
+            cursor = connection.cursor()
+            cursor.execute("DELETE FROM books WHERE id = ?", (book_id,))
+            connection.commit()
+
             row_widget.destroy()
             self.after(500, self._load_dashboard_data)
         except Exception as e:
+            if connection is not None:
+                connection.rollback()
             print(f"Lỗi khi Xóa sách: {e}")
 
     def _handle_scan_btn_click(self):
@@ -473,7 +523,7 @@ class IngestionView(ctk.CTkFrame):
                 for file in files:
                     if self._cancel_scan: break
                     ext = file.lower().split('.')[-1]
-                    if ext in ['pdf', 'epub']:
+                    if ext in ['pdf', 'epub', 'mobi', 'azw3']:
                         full_path = os.path.join(root, file)
                         size = os.path.getsize(full_path)
                         f_info = {
@@ -558,15 +608,33 @@ class IngestionView(ctk.CTkFrame):
                 
         self._render_ai_step()
         
-    def _quarantine_file(self, file_path, widget=None):
+    def _quarantine_file(
+        self,
+        file_path: str | Path,
+        widget: Any = None,
+    ) -> bool:
+        """Move a file to Recycle Bin and dispatch UI effects to Tk's thread."""
         try:
             p = Path(file_path)
-            send2trash(str(p))
+            clean_path = str(p).replace('/', '\\')
+            if clean_path.startswith('\\\\?\\'):
+                clean_path = clean_path[4:]
+            try:
+                send2trash(clean_path)
+            except Exception as trash_error:
+                self._safe_log(
+                    f"[LỖI XÓA] Không thể chuyển vào Thùng rác; "
+                    f"file được giữ nguyên: {p.name} ({trash_error})"
+                )
+                return False
+
             if widget:
-                widget.destroy()
-            self._insert_log(f"[XÓA] Đã chuyển vào Thùng rác: {p.name}")
+                self.after(0, widget.destroy)
+            self._safe_log(f"[XÓA] Đã xử lý file rác: {p.name}")
+            return True
         except Exception as e:
-            self._insert_log(f"[LỖI XÓA] {e}")
+            self._safe_log(f"[LỖI XÓA] {e}")
+            return False
 
     def _delete_all_duplicates(self):
         for f in self.db_duplicates:
@@ -649,55 +717,75 @@ class IngestionView(ctk.CTkFrame):
         return text[:limit]
 
     def _handle_ai_btn_click(self):
-        if self.btn_ai.cget("text") == "🛑 Dừng AI Lại":
-            self._cancel_scan = True
-            self.btn_ai.configure(state="disabled", text="Đang dừng...")
-        else:
-            self._cancel_scan = False
-            self.btn_ai.configure(text="🛑 Dừng AI Lại", fg_color=Colors.DANGER, hover_color=Colors.DANGER_HOVER)
-            threading.Thread(target=self._ai_worker, daemon=True).start()
+        self.btn_ai.configure(state="disabled", text="⏳ Đang phân loại AI...")
+        threading.Thread(target=self._ai_worker, daemon=True).start()
             
     def _reset_ai_btn(self):
-        self.btn_ai.configure(command=self._handle_ai_btn_click)
-        self.btn_ai.configure(state="normal", text="✨ Bắt đầu Phân loại (Vertex AI)", fg_color=Colors.PRIMARY, hover_color=Colors.PRIMARY_HOVER)
+        self.btn_ai.configure(state="disabled", text="✔️ Hoàn tất Phân loại", fg_color=Colors.SUCCESS)
 
     def _ai_worker(self):
         try:
             if not self.ai_classifier.cloud_client.is_ready:
                 self._safe_ai_log("[LỖI] Vertex AI chưa được cấu hình. Vui lòng cấu hình trong Cài đặt.")
                 return
-                
+
             self._safe_ai_log(f"Bắt đầu xử lý {len(self.clean_files)} sách bằng Vertex AI + Rule Engine...")
-            all_books = self.db_manager.get_all_books()
-            db_titles = {b['title'].lower().strip() for b in all_books if b.get('title')}
             overrides = load_overrides()
-            
+
             for i, f in enumerate(self.clean_files):
                 if self._cancel_scan:
                     self._safe_ai_log("\n[!] Đã dừng luồng AI bởi người dùng.")
                     break
-                    
+
                 self._safe_ai_log(f"\n[{i+1}] Fast Sampling: {f['name']}...")
                 text_sample = self._get_sample_text(f['path'], f['ext'])
                 if not text_sample.strip():
-                    self._safe_ai_log("  -> [BỎ QUA] Không trích xuất được text.")
-                    continue
-                    
+                    self._safe_ai_log("  -> [THÔNG BÁO] Không có nội dung text (định dạng không hỗ trợ), AI sẽ phân tích hoàn toàn dựa vào Tên file gốc.")
+
                 if self._cancel_scan: break
-                
-                meta = self.ai_classifier.analyze_book(text_sample)
+
+                meta = self.ai_classifier.analyze_book(text_sample, f['name'])
+
                 extracted_title = (meta.get('title') or '').strip() or Path(f['path']).stem
-                safe_title = "".join(c for c in extracted_title if c.isalnum() or c in (' ', '-', '_')).rstrip()
+                author = (meta.get('author') or '').strip()
+
+                if author and author.lower() != 'không rõ':
+                    full_name = f"{extracted_title} - {author}"
+                else:
+                    full_name = extracted_title
+
+                safe_title = "".join(c for c in full_name if c.isalnum() or c in (' ', '-', '_', '.', ',')).rstrip()
                 if not safe_title: safe_title = Path(f['path']).stem
-                
+
                 cat_folder = classify_file(safe_title, overrides)
                 self._safe_ai_log(f"  -> Title AI: {safe_title}")
                 self._safe_ai_log(f"  -> Keyword Match Category: {cat_folder}")
-                
-                if safe_title.lower() in db_titles:
-                    self._safe_ai_log(f"  -> [BỎ QUA] Đã tồn tại trong DB! Đang chuyển vào Thùng rác...")
+
+                target_file_name = f"{safe_title}.{f['ext']}"
+                source_path = Path(f['path']).resolve()
+                duplicate_path = None
+
+                # Check for exact name match across the entire library
+                for existing in self.lib_dir.rglob(target_file_name):
+                    if existing.resolve() != source_path:
+                        duplicate_path = existing
+                        break
+
+                if duplicate_path is not None:
+                    self._safe_ai_log(f"  -> [BỎ QUA] Đã tồn tại vật lý trên đĩa! Đang dọn dẹp...")
                     try:
-                        send2trash(str(f['path']))
+                        clean_path = str(f['path']).replace('/', '\\')
+                        if clean_path.startswith('\\\\?\\'):
+                            clean_path = clean_path[4:]
+                        try:
+                            send2trash(clean_path)
+                        except Exception as trash_error:
+                            self._safe_ai_log(
+                                f"  -> [LỖI] Không thể chuyển vào Thùng rác; "
+                                f"file được giữ nguyên: {Path(f['path']).name} "
+                                f"({trash_error})"
+                            )
+                            continue
                         self._safe_ai_log(f"  -> [XÓA] Đã dọn dẹp file tàn dư.")
                     except Exception as e:
                         self._safe_ai_log(f"  -> [LỖI] Xóa file: {e}")
@@ -714,16 +802,19 @@ class IngestionView(ctk.CTkFrame):
                     
                 target_dir.mkdir(parents=True, exist_ok=True)
                 dest_path = target_dir / f"{safe_title}.{f['ext']}"
-                counter = 1
-                while dest_path.exists():
-                    dest_path = target_dir / f"{safe_title}_{counter}.{f['ext']}"
-                    counter += 1
-                    
-                try:
-                    shutil.move(str(f['path']), str(dest_path))
-                except Exception as e:
-                    self._safe_ai_log(f"  -> [LỖI] Di chuyển file: {e}")
-                    continue
+                if dest_path.resolve() != source_path:
+                    counter = 1
+                    while dest_path.exists():
+                        dest_path = target_dir / f"{safe_title}_{counter}.{f['ext']}"
+                        counter += 1
+
+                    try:
+                        shutil.move(str(f['path']), str(dest_path))
+                    except Exception as e:
+                        self._safe_ai_log(f"  -> [LỖI] Di chuyển file: {e}")
+                        continue
+                else:
+                    dest_path = source_path
                 
                 self._safe_ai_log(f"  -> Đã di chuyển: {dest_path.absolute()}")
                 

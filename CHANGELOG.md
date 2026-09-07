@@ -7,13 +7,33 @@ Dự án này tuân theo [Keep a Changelog](https://keepachangelog.com/en/1.0.0/
 
 ## [Unreleased]
 
+### Fixed
+
+- Restored the ingestion cleanup worker used by queued single-file and batch jobs.
+- Prevented ingestion cleanup from permanently deleting ebooks when Windows Recycle
+  Bin handling fails, including the batch AI duplicate path.
+- Excluded the active source file from duplicate lookup and preserved its path when
+  reclassifying an ebook already stored in the correct destination.
+- Reordered catalog removal so database deletion is committed only after Recycle Bin
+  cleanup succeeds.
+- Added the previously ignored `requirements.txt` to version control and declared
+  `send2trash==2.1.0` as an explicit runtime dependency.
+- Preserved cataloged duplicate sources for explicit reconciliation instead of
+  recycling files while their database rows still reference them.
+- Routed quarantine logs and widget cleanup through the Tk main-thread dispatcher.
+
 ### Testing
 
+- Added regression coverage for registered-duplicate preservation and Tk-safe
+  quarantine logging/widget cleanup; the maintained suite now passes 139 tests.
+- Added RED regression cases for source-file self-matching, DB/Recycle Bin operation
+  ordering, failure preservation, and the `send2trash` runtime dependency manifest.
 - Added regression coverage for ingestion worker wiring and recoverable duplicate cleanup.
 - Updated translation and queue tests to the current three-value `TranslationService`
   contract and `ChunkingStrategy` facade.
 - Stabilized Search UI fixtures with concrete database statistics and a shared hidden Tk root.
-- Recorded the TDD RED baseline: 129 passed and 2 expected production failures.
+- Completed the TDD cycle at 132 passed with no failures in the maintained `tests/`
+  suite.
 
 ## [2.4.0] - 2026-08-30
 
