@@ -29,6 +29,7 @@ Output/
 
 # Log files
 *.txt
+!/requirements.txt
 *.log
 
 # Backup files
@@ -64,3 +65,15 @@ WORKFLOW.md
 *.env
 *.secret
 *.gguf
+
+# Root JSON files are local exports/runtime data or downloaded credentials.
+# Keep structured project JSON inside a named subdirectory such as config/.
+/*.json
+!/.ai-devkit.json
+
+# Preferred locations for all account credentials, regardless of filename.
+/credentials/
+/secrets/
+
+# GCP Keys
+config/keys/

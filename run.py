@@ -17,7 +17,26 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / 'src'))
 
 # pylint: disable=wrong-import-position
+
+# ── Workaround: CustomTkinter 5.2.2 bug ────────────────────────────────────
+# _windows_set_titlebar_color() can TclError crash on some Windows configs
+# when wm/winfo commands are called during mainloop startup.
+# Suppress silently so the app still loads correctly.
+import customtkinter.windows.ctk_tk as _ctk_tk
+
+_orig_titlebar = _ctk_tk.CTk._windows_set_titlebar_color
+
+def _safe_set_titlebar_color(self, *args, **kwargs):
+    """Patched version that silently ignores TclErrors."""
+    try:
+        _orig_titlebar(self, *args, **kwargs)
+    except Exception:  # noqa: BLE001 — suppress TclError from destroyed state
+        pass
+
+_ctk_tk.CTk._windows_set_titlebar_color = _safe_set_titlebar_color
+# ───────────────────────────────────────────────────────────────────────────
+
 from extract_app.main_app import main
 
 if __name__ == "__main__":
-    main()
+    main()

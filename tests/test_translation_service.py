@@ -7,7 +7,7 @@
 # --------------------------------------------------------------------------------
 
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 import sys
 from pathlib import Path
 
@@ -23,9 +23,8 @@ class TestCleanTranslationOutput(unittest.TestCase):
         mock_settings.get_api_key.return_value = ""
         mock_settings.get.return_value = ""
 
-        with patch('extract_app.core.translation_service.genai'):
-            from extract_app.core.translation_service import TranslationService
-            self.service = TranslationService(mock_settings)
+        from extract_app.core.translation_service import TranslationService
+        self.service = TranslationService(mock_settings)
 
     def test_strips_code_fences(self):
         """AI sometimes wraps output in code fences — should be removed."""
@@ -73,9 +72,8 @@ class TestChunkText(unittest.TestCase):
         mock_settings.get_api_key.return_value = ""
         mock_settings.get.return_value = ""
 
-        with patch('extract_app.core.translation_service.genai'):
-            from extract_app.core.translation_service import TranslationService
-            self.service = TranslationService(mock_settings)
+        from extract_app.core.translation_service import TranslationService
+        self.service = TranslationService(mock_settings)
 
     def test_short_text_no_split(self):
         """Text shorter than chunk_size should return as single chunk."""
@@ -118,14 +116,13 @@ class TestAnchorProtection(unittest.TestCase):
         mock_settings.get_api_key.return_value = ""
         mock_settings.get.return_value = ""
 
-        with patch('extract_app.core.translation_service.genai'):
-            from extract_app.core.translation_service import TranslationService
-            self.service = TranslationService(mock_settings)
+        from extract_app.core.translation_service import TranslationService
+        self.service = TranslationService(mock_settings)
 
     def test_protect_and_restore_roundtrip(self):
         """Protecting and then restoring anchors should return original text."""
         original = "Some text [Image: photo.jpg] more text [Image: diagram.png] end."
-        protected, mapping = self.service._protect_anchors(original)
+        protected, mapping = self.service.chunker.protect_anchors(original)
         
         # Placeholders should be present
         self.assertIn("__IMG_000__", protected)
@@ -133,13 +130,13 @@ class TestAnchorProtection(unittest.TestCase):
         self.assertNotIn("[Image:", protected)
         
         # Restore
-        restored = self.service._restore_anchors(protected, mapping)
+        restored = self.service.chunker.restore_anchors(protected, mapping)
         self.assertEqual(restored, original)
 
     def test_no_anchors_passthrough(self):
         """Text without anchors should pass through unchanged."""
         text = "No images here."
-        protected, mapping = self.service._protect_anchors(text)
+        protected, mapping = self.service.chunker.protect_anchors(text)
         self.assertEqual(protected, text)
         self.assertEqual(len(mapping), 0)
 
@@ -152,7 +149,7 @@ class TestAnchorProtection(unittest.TestCase):
         }
         # Simulate local LLM corrupted output
         corrupted = "Đây là _IMG_000_ và __ IMG_001 __ cũng như IMG_002."
-        restored = self.service._restore_anchors(corrupted, mapping)
+        restored = self.service.chunker.restore_anchors(corrupted, mapping)
         
         self.assertIn("[Image: first.jpg]", restored)
         self.assertIn("[Image: second.png]", restored)

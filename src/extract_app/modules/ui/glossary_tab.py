@@ -33,13 +33,15 @@ class GlossaryTab(ctk.CTkFrame):
         
         ctk.CTkLabel(top_frame, text="Danh mục:", font=Fonts.BODY_BOLD, text_color=Colors.TEXT_PRIMARY).pack(side="left")
         
-        self.cat_menu = ctk.CTkOptionMenu(
-            top_frame, variable=self.active_cat_var, values=self.cats, width=150,
-            command=self._on_category_change,
-            fg_color=Colors.BG_INPUT, button_color=Colors.BORDER, button_hover_color=Colors.PRIMARY,
-            text_color=Colors.TEXT_PRIMARY, dropdown_fg_color=Colors.BG_CARD, dropdown_text_color=Colors.TEXT_PRIMARY
+        # Use Entry to avoid tkinter.Menu allocation (no CTkComboBox/OptionMenu)
+        self.cat_entry = ctk.CTkEntry(
+            top_frame, textvariable=self.active_cat_var, width=150,
+            fg_color=Colors.BG_INPUT, border_color=Colors.BORDER, text_color=Colors.TEXT_PRIMARY
         )
-        self.cat_menu.pack(side="left", padx=Spacing.SM)
+        self.cat_entry.pack(side="left", padx=Spacing.SM)
+        self.cat_entry.bind("<Return>", lambda e: self._on_category_change(self.active_cat_var.get()))
+        # Keep cat_menu alias so configure() calls don't break
+        self.cat_menu = self.cat_entry
         
         ctk.CTkButton(
             top_frame, text="Thêm", width=60, command=self._add_category,

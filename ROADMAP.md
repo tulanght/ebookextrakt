@@ -6,6 +6,16 @@
 ## Tầm nhìn Dự án
 Phát triển `ExtractPDF-EPUB App` thành một **Trung tâm Nội dung Thông minh (Intelligent Content Hub)**, không chỉ bóc tách dữ liệu một cách chính xác mà còn hỗ trợ tối ưu hóa, quản lý, và tự động hóa các quy trình sản xuất nội dung số.
 
+## Ổn định Python trước Electron
+
+- [x] Thiết lập baseline test cho Translation, Queue, Search UI và Ingestion Safety.
+- [x] Bổ sung regression test cho worker ingestion bị thiếu và fallback xóa vĩnh viễn.
+- [x] Sửa hai lỗi production và đưa toàn bộ test suite chuẩn về GREEN (132 passed).
+- [x] Khắc phục self-match duplicate, đảm bảo transaction DB/Recycle Bin và khai báo dependency runtime.
+- [x] Giữ nguyên duplicate đã đăng ký DB để đối soát và chuyển mọi cập nhật quarantine về Tk main thread.
+- [ ] Bổ sung coverage cho Database, EPUB, Storage và luồng ingestion tích hợp.
+- [ ] Chỉ đánh giá lại Electron sau khi phiên bản Python đáp ứng ổn định nhu cầu thực tế.
+
 ---
 ## Lộ trình Phát triển (Các Giai đoạn Tiếp theo)
 
@@ -57,6 +67,16 @@ Phát triển `ExtractPDF-EPUB App` thành một **Trung tâm Nội dung Thông 
 
 * **[ ] (Tương lai) Tích hợp Mạng xã hội:**
     * Nghiên cứu và phát triển tính năng đăng bài lên Facebook.
+
+### Giai đoạn 7: Context Retrieval (FTS5 Search & Corpus Reconciliation)
+- [x] Metadata audit: phát hiện category field confusion
+- [x] `site_category` backfill vào content.md + books DB table
+- [x] FTS5 virtual table + auto-sync triggers
+- [x] `search_content()` method in DatabaseManager (filter by site_category)
+- [x] `scripts/search.py` CLI interface
+- [x] `tools/markdown_exporter.py`: strip `[Image Anchor:]` and export `content.md` for plant corpus
+- [x] `scripts/reconcile_corpus.py`: 4-way corpus integrity reconciliation tool
+- [ ] Integration với Antigravity article pipeline
 
 ---
 ## ✅ Thành tựu đã Đạt được (v0.1.0-alpha)

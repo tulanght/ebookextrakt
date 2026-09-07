@@ -298,7 +298,5 @@ class ResultsView(ctk.CTkFrame):
         return ctk.CTkLabel(master, text=text, text_color="gray", font=("", 10))
 
     def _on_extract_click(self):
-        """Handle extract button click."""
-        target_dir = ctk.filedialog.askdirectory(title="Chọn thư mục lưu kết quả")
-        if target_dir:
-            self.on_extract(target_dir)
+        """Handle extract button click by triggering on_extract without prompting for directory."""
+        self.on_extract("")

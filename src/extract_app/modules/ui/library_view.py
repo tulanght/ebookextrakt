@@ -62,31 +62,26 @@ class BookCard(ctk.CTkFrame):
         
         # ===== PACK LAYOUT (top to bottom) =====
         
-        # 1. Cover Image
-        self.cover_image = None
+        # 1. Cover Image — start with placeholder, load image asynchronously
         cover_w, cover_h = 200, 220
-        if cover_path and Path(cover_path).exists():
-            try:
-                img = Image.open(cover_path)
-                img = ImageOps.fit(img, (cover_w * 2, cover_h * 2), method=Image.LANCZOS)
-                self.cover_image = ctk.CTkImage(light_image=img, dark_image=img, size=(cover_w, cover_h))
-            except Exception as e:
-                print(f"Error loading cover: {e}")
-        
-        if self.cover_image:
-            self.lbl_cover = ctk.CTkLabel(self, text="", image=self.cover_image, width=cover_w, height=cover_h)
-        else:
-            self.lbl_cover = ctk.CTkLabel(
-                self, text="📚\nNo Cover", 
-                font=Fonts.H3,
-                fg_color=Colors.BG_APP,
-                text_color=Colors.TEXT_MUTED,
-                corner_radius=10,
-                width=cover_w, height=cover_h
-            )
-            
+        self.lbl_cover = ctk.CTkLabel(
+            self, text="📚", 
+            font=Fonts.H3,
+            fg_color=Colors.BG_APP,
+            text_color=Colors.TEXT_MUTED,
+            corner_radius=10,
+            width=cover_w, height=cover_h
+        )
         self.lbl_cover.pack(side="top", pady=(8, 4), padx=10)
         self._bind_click(self.lbl_cover)
+
+        # Load cover async to avoid blocking main thread
+        if cover_path and Path(cover_path).exists():
+            threading.Thread(
+                target=self._load_cover_async,
+                args=(cover_path, cover_w, cover_h),
+                daemon=True
+            ).start()
         
         # 2. Title (truncated, max 2 lines)
         display_title = full_title
@@ -176,7 +171,30 @@ class BookCard(ctk.CTkFrame):
         self.btn_delete.bind("<Enter>", self._on_enter)
         self.btn_delete.bind("<Leave>", self._on_leave)
 
+        self.btn_open_folder = ctk.CTkButton(
+            self, text="📁", width=24, height=24,
+            fg_color=Colors.BG_CARD_HOVER, border_color=Colors.PRIMARY, border_width=1,
+            text_color=Colors.PRIMARY, hover_color=Colors.PRIMARY_HOVER,
+            font=Fonts.BODY_BOLD, corner_radius=12,
+            command=self._handle_open_folder
+        )
+        self.btn_open_folder.bind("<Enter>", self._on_enter)
+        self.btn_open_folder.bind("<Leave>", self._on_leave)
+
+    def _load_cover_async(self, cover_path: str, cover_w: int, cover_h: int):
+        """Load book cover from disk in background thread, then update label on main thread."""
+        try:
+            img = Image.open(cover_path)
+            img = ImageOps.fit(img, (cover_w * 2, cover_h * 2), method=Image.LANCZOS)
+            ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(cover_w, cover_h))
+            # Must update widget on main thread via after()
+            if self.winfo_exists():
+                self.after(0, lambda: self.lbl_cover.configure(image=ctk_img, text=""))
+        except Exception:
+            pass  # keep placeholder on error
+
     def _bind_click(self, widget):
+
         widget.bind("<Button-1>", self._handle_click_event)
         widget.bind("<Enter>", self._on_enter)
         widget.bind("<Leave>", self._on_leave)
@@ -184,14 +202,32 @@ class BookCard(ctk.CTkFrame):
     def _on_enter(self, event=None):
         self.configure(border_color=Colors.PRIMARY, fg_color=Colors.BG_CARD_HOVER)
         self.btn_delete.place(relx=1.0, rely=0.0, anchor="ne", x=-6, y=6)
+        self.btn_open_folder.place(relx=1.0, rely=1.0, anchor="se", x=-6, y=-6)
 
     def _on_leave(self, event=None):
         self.configure(border_color=Colors.BORDER, fg_color=Colors.BG_CARD)
         self.btn_delete.place_forget()
+        self.btn_open_folder.place_forget()
 
     def _handle_click_event(self, event=None):
         if self.on_click:
             self.on_click(self.item_id)
+
+    def _handle_open_folder(self):
+        source_path = self.book_data.get('source_path', '')
+        category = self.book_data.get('category', '_UNCLASSIFIED') or '_UNCLASSIFIED'
+        if not source_path: return
+        import os
+        from pathlib import Path
+        filename = Path(source_path).name
+        clean_name = filename.replace(" ", "_").replace(".epub", "").replace(".pdf", "")
+        if category == "_NOT_BIOLOGY": base_dir = Path("D:/Ebooks/_Review_Not_Biology")
+        elif category == "_UNCLASSIFIED": base_dir = Path("D:/Ebooks/_UNCLASSIFIED")
+        elif category == "_SKIP": base_dir = Path("D:/Ebooks/_SKIP")
+        else: base_dir = Path("D:/Ebooks") / category
+        full_path = base_dir / clean_name
+        if full_path.exists(): os.startfile(str(full_path))
+        elif base_dir.exists(): os.startfile(str(base_dir))
 
     @staticmethod
     def _format_relative_date(date_str: str) -> str:
@@ -217,6 +253,119 @@ class BookCard(ctk.CTkFrame):
             self.on_delete(self.item_id)
 
 
+class BookListRow(ctk.CTkFrame):
+    """
+    A list row widget representing a single book in List View.
+    """
+    def __init__(self, master, book_data: Dict, on_click: Callable[[int], None], on_delete: Callable[[int], None], **kwargs):
+        super().__init__(
+            master, 
+            fg_color=Colors.BG_CARD, 
+            corner_radius=Spacing.BUTTON_RADIUS, 
+            border_width=1, 
+            border_color=Colors.BORDER,
+            height=60,
+            **kwargs
+        )
+        self.pack_propagate(False)
+        self.book_data = book_data
+        self.on_click = on_click
+        self.on_delete = on_delete
+        self.item_id = book_data['id']
+        
+        self.bind("<Enter>", self._on_enter)
+        self.bind("<Leave>", self._on_leave)
+        
+        self.grid_columnconfigure(2, weight=1)
+        
+        cover_path = book_data.get('cover_path', '')
+        self.lbl_cover = ctk.CTkLabel(self, text="📚", width=40, height=50, fg_color=Colors.BG_APP, corner_radius=4)
+        self.lbl_cover.grid(row=0, column=0, padx=(10, 10), pady=5)
+        self._bind_click(self.lbl_cover)
+        
+        if cover_path and Path(cover_path).exists():
+            threading.Thread(target=self._load_cover_async, args=(cover_path,), daemon=True).start()
+            
+        title = book_data.get('title', 'Unknown Title')
+        author = book_data.get('author', 'Unknown Author')
+        
+        info_frame = ctk.CTkFrame(self, fg_color="transparent")
+        info_frame.grid(row=0, column=2, sticky="w", padx=10)
+        
+        lbl_title = ctk.CTkLabel(info_frame, text=title, font=Fonts.BODY_BOLD, text_color=Colors.TEXT_PRIMARY)
+        lbl_title.pack(anchor="w")
+        self._bind_click(lbl_title)
+        
+        lbl_author = ctk.CTkLabel(info_frame, text=author, font=Fonts.SMALL, text_color=Colors.TEXT_MUTED)
+        lbl_author.pack(anchor="w")
+        self._bind_click(lbl_author)
+
+        total_leaf = book_data.get('total_leaf', 0) or 0
+        translated = book_data.get('translated_count', 0) or 0
+        prog_text = f"{translated}/{total_leaf}" if total_leaf > 0 else "N/A"
+        
+        ctk.CTkLabel(self, text=prog_text, font=Fonts.SMALL, text_color=Colors.TEXT_PRIMARY).grid(row=0, column=3, padx=20)
+        
+        self.btn_open_folder = ctk.CTkButton(
+            self, text="📁", width=30, height=30,
+            fg_color="transparent", text_color=Colors.PRIMARY, hover_color=Colors.BG_CARD_HOVER,
+            font=Fonts.BODY_BOLD, corner_radius=4, command=self._handle_open_folder
+        )
+        self.btn_open_folder.grid(row=0, column=4, padx=(0, 10))
+
+        self.btn_delete = ctk.CTkButton(
+            self, text="×", width=30, height=30,
+            fg_color="transparent", text_color=Colors.DANGER, hover_color=Colors.DANGER_HOVER,
+            font=Fonts.BODY_BOLD, corner_radius=4, command=self._handle_delete
+        )
+        self.btn_delete.grid(row=0, column=5, padx=(0, 10))
+
+    def _load_cover_async(self, cover_path: str):
+        try:
+            img = Image.open(cover_path)
+            img = ImageOps.fit(img, (80, 100), method=Image.LANCZOS)
+            ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(40, 50))
+            if self.winfo_exists():
+                self.after(0, lambda: self.lbl_cover.configure(image=ctk_img, text=""))
+        except Exception:
+            pass
+            
+    def _bind_click(self, widget):
+        widget.bind("<Button-1>", self._handle_click_event)
+        widget.bind("<Enter>", self._on_enter)
+        widget.bind("<Leave>", self._on_leave)
+
+    def _on_enter(self, event=None):
+        self.configure(border_color=Colors.PRIMARY, fg_color=Colors.BG_CARD_HOVER)
+
+    def _on_leave(self, event=None):
+        self.configure(border_color=Colors.BORDER, fg_color=Colors.BG_CARD)
+
+    def _handle_click_event(self, event=None):
+        if self.on_click:
+            self.on_click(self.item_id)
+            
+    def _handle_open_folder(self):
+        source_path = self.book_data.get('source_path', '')
+        category = self.book_data.get('category', '_UNCLASSIFIED') or '_UNCLASSIFIED'
+        if not source_path: return
+        import os
+        from pathlib import Path
+        filename = Path(source_path).name
+        clean_name = filename.replace(" ", "_").replace(".epub", "").replace(".pdf", "")
+        if category == "_NOT_BIOLOGY": base_dir = Path("D:/Ebooks/_Review_Not_Biology")
+        elif category == "_UNCLASSIFIED": base_dir = Path("D:/Ebooks/_UNCLASSIFIED")
+        elif category == "_SKIP": base_dir = Path("D:/Ebooks/_SKIP")
+        else: base_dir = Path("D:/Ebooks") / category
+        full_path = base_dir / clean_name
+        if full_path.exists(): os.startfile(str(full_path))
+        elif base_dir.exists(): os.startfile(str(base_dir))
+            
+    def _handle_delete(self):
+        if self.on_delete:
+            self.on_delete(self.item_id)
+
+
 class LibraryView(ctk.CTkFrame):
     """
     The main view for the Library tab (Dark Navy).
@@ -231,11 +380,11 @@ class LibraryView(ctk.CTkFrame):
         self.books: List[Dict] = []
         
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=1)
+        self.grid_rowconfigure(2, weight=1)
         
         # 1. Top Bar (Search & Refresh)
         self.top_frame = ctk.CTkFrame(self, height=50, fg_color="transparent")
-        self.top_frame.grid(row=0, column=0, sticky="ew", padx=0, pady=(0, Spacing.MD))
+        self.top_frame.grid(row=0, column=0, sticky="ew", padx=0, pady=(0, 0))
         
         self.search_var = tk.StringVar()
         self.search_var.trace("w", self._on_search_change)
@@ -258,6 +407,46 @@ class LibraryView(ctk.CTkFrame):
             height=36, corner_radius=Spacing.BUTTON_RADIUS
         )
         self.btn_refresh.pack(side="right", padx=Spacing.XL)
+
+        # 1b. Filter Bar
+        self.filter_frame = ctk.CTkFrame(self, height=40, fg_color="transparent")
+        self.filter_frame.grid(row=1, column=0, sticky="ew", padx=Spacing.MD, pady=(0, Spacing.MD))
+        
+        self.filter_category_var = tk.StringVar(value="Tất cả Danh Mục")
+        self.opt_category = ctk.CTkOptionMenu(
+            self.filter_frame, values=["Tất cả Danh Mục"],
+            variable=self.filter_category_var, command=self._on_filter_change,
+            font=Fonts.SMALL, fg_color=Colors.BG_INPUT, button_color=Colors.BORDER,
+            button_hover_color=Colors.PRIMARY, width=140
+        )
+        self.opt_category.pack(side="left", padx=0)
+
+        self.filter_status_var = tk.StringVar(value="Tất cả")
+        self.seg_filter = ctk.CTkSegmentedButton(
+            self.filter_frame, values=["Tất cả", "Chưa dịch", "Đang dịch", "Đã xong"],
+            variable=self.filter_status_var, command=self._on_filter_change,
+            font=Fonts.SMALL, selected_color=Colors.PRIMARY, selected_hover_color=Colors.PRIMARY_HOVER
+        )
+        self.seg_filter.pack(side="left", padx=Spacing.MD)
+
+        self.sort_var = tk.StringVar(value="Mới thêm ↓")
+        self.opt_sort = ctk.CTkOptionMenu(
+            self.filter_frame, values=["Mới thêm ↓", "Cũ nhất ↑", "Tên A→Z", "% Dịch ↓"],
+            variable=self.sort_var, command=self._on_filter_change,
+            font=Fonts.SMALL, fg_color=Colors.BG_INPUT, button_color=Colors.BORDER,
+            button_hover_color=Colors.PRIMARY, width=140
+        )
+        self.opt_sort.pack(side="left", padx=Spacing.MD)
+
+        self.view_mode_var = tk.StringVar(value="Card")
+        self.btn_view_mode = ctk.CTkButton(
+            self.filter_frame, text="📋 List View", width=100,
+            fg_color="transparent", border_width=1, border_color=Colors.BORDER,
+            text_color=Colors.TEXT_PRIMARY, hover_color=Colors.BG_CARD_HOVER,
+            command=self._toggle_view_mode,
+            font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS
+        )
+        self.btn_view_mode.pack(side="right", padx=0)
         
         # 2. Content Area (Scrollable Grid)
         self.scroll_frame = ctk.CTkScrollableFrame(
@@ -265,49 +454,144 @@ class LibraryView(ctk.CTkFrame):
             scrollbar_button_color=Colors.BORDER,
             scrollbar_button_hover_color=Colors.TEXT_MUTED
         )
-        self.scroll_frame.grid(row=1, column=0, sticky="nsew")
+        self.scroll_frame.grid(row=2, column=0, sticky="nsew")
         self.scroll_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
+
+        self._page = 1  # current page (how many PAGE_SIZE blocks shown)
+        self.PAGE_SIZE = 20  # books per page
 
         self.refresh_library()
 
+    def _on_filter_change(self, *args):
+        self._page = 1
+        self._render_books()
+
+    def _toggle_view_mode(self):
+        current = self.view_mode_var.get()
+        if current == "Card":
+            self.view_mode_var.set("List")
+            self.btn_view_mode.configure(text="🔲 Card View")
+        else:
+            self.view_mode_var.set("Card")
+            self.btn_view_mode.configure(text="📋 List View")
+        self._page = 1
+        self._render_books()
+
     def refresh_library(self):
+        self._page = 1  # reset pagination
         query = self.search_var.get()
         if query:
-            self.books = self.db_manager.search_books(query)
+            self.all_books = self.db_manager.search_books(query)
         else:
-            self.books = self.db_manager.get_all_books()
-            
+            self.all_books = self.db_manager.get_all_books()
+
+        categories = sorted(list(set(b.get('category', '') for b in self.all_books if b.get('category', ''))))
+        cat_values = ["Tất cả Danh Mục"] + categories
+        if hasattr(self, 'opt_category'):
+            self.opt_category.configure(values=cat_values)
+
         self._render_books()
 
     def _on_search_change(self, *args):
-        self.refresh_library()
+        if hasattr(self, '_search_after_id'):
+            self.after_cancel(self._search_after_id)
+        self._search_after_id = self.after(300, self.refresh_library)
 
     def _render_books(self):
-        # Clear existing
+        """Render paginated book grid — applies in-memory filters first."""
         for widget in self.scroll_frame.winfo_children():
             widget.destroy()
+
+        if not hasattr(self, 'all_books'):
+            self.all_books = []
+
+        # 1. Apply in-memory filter
+        status_filter = self.filter_status_var.get()
+        cat_filter = self.filter_category_var.get()
+        filtered_books = []
+        for b in self.all_books:
+            if cat_filter != "Tất cả Danh Mục" and b.get('category', '') != cat_filter:
+                continue
             
-        if not self.books:
-            lbl = ctk.CTkLabel(
-                self.scroll_frame, text="Không tìm thấy sách nào trong thư viện.",
+            total = b.get('total_leaf', 0) or 0
+            translated = b.get('translated_count', 0) or 0
+            if status_filter == "Chưa dịch":
+                if translated == 0: filtered_books.append(b)
+            elif status_filter == "Đang dịch":
+                if 0 < translated < total: filtered_books.append(b)
+            elif status_filter == "Đã xong":
+                if total > 0 and translated >= total: filtered_books.append(b)
+            else:
+                filtered_books.append(b)
+
+        # 2. Apply in-memory sort
+        sort_mode = self.sort_var.get()
+        if sort_mode == "Cũ nhất ↑":
+            filtered_books.sort(key=lambda x: x.get('added_date', ''), reverse=False)
+        elif sort_mode == "Tên A→Z":
+            filtered_books.sort(key=lambda x: x.get('title', '').lower())
+        elif sort_mode == "% Dịch ↓":
+            def get_pct(b):
+                t = b.get('total_leaf', 0) or 0
+                return (b.get('translated_count', 0) or 0) / t if t > 0 else 0
+            filtered_books.sort(key=get_pct, reverse=True)
+        else: # Mới thêm ↓
+            filtered_books.sort(key=lambda x: x.get('added_date', ''), reverse=True)
+
+        self.filtered_books = filtered_books
+
+        if not self.filtered_books:
+            ctk.CTkLabel(
+                self.scroll_frame, text="Không tìm thấy sách nào phù hợp.",
                 text_color=Colors.TEXT_MUTED, font=Fonts.BODY
-            )
-            lbl.pack(pady=50)
+            ).pack(pady=50)
             return
 
-        # Render Grid (4 columns)
-        cols = 4
-        for i, book in enumerate(self.books):
-            row = i // cols
-            col = i % cols
-            
-            card = BookCard(
-                self.scroll_frame, 
-                book_data=book, 
-                on_click=self._open_book_detail,
-                on_delete=self._delete_book
-            )
-            card.grid(row=row, column=col, sticky="n", padx=Spacing.MD, pady=Spacing.MD)
+        is_list_view = self.view_mode_var.get() == "List"
+        visible = self.filtered_books[:self._page * self.PAGE_SIZE]
+
+        if is_list_view:
+            self.scroll_frame.grid_columnconfigure((0, 1, 2, 3), weight=0)
+            self.scroll_frame.grid_columnconfigure(0, weight=1)
+            for i, book in enumerate(visible):
+                row_ui = BookListRow(
+                    self.scroll_frame, book_data=book,
+                    on_click=self._open_book_detail,
+                    on_delete=self._delete_book
+                )
+                row_ui.grid(row=i, column=0, sticky="ew", padx=Spacing.MD, pady=4)
+        else:
+            self.scroll_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
+            cols = 4
+            for i, book in enumerate(visible):
+                row_ = i // cols
+                col_ = i % cols
+                card = BookCard(
+                    self.scroll_frame,
+                    book_data=book,
+                    on_click=self._open_book_detail,
+                    on_delete=self._delete_book
+                )
+                card.grid(row=row_, column=col_, sticky="n", padx=Spacing.MD, pady=Spacing.MD)
+
+        # Load More button
+        if len(self.filtered_books) > self._page * self.PAGE_SIZE:
+            total_remaining = len(self.filtered_books) - self._page * self.PAGE_SIZE
+            last_row = len(visible) if is_list_view else (len(visible) - 1) // 4 + 1
+            col_span = 1 if is_list_view else 4
+            ctk.CTkButton(
+                self.scroll_frame,
+                text=f"⬇ Tải thêm ({total_remaining} sách còn lại)",
+                fg_color=Colors.BG_CARD, border_width=1, border_color=Colors.BORDER,
+                text_color=Colors.TEXT_PRIMARY, hover_color=Colors.BG_CARD_HOVER,
+                font=Fonts.BODY, corner_radius=Spacing.BUTTON_RADIUS,
+                command=self._load_more
+            ).grid(row=last_row, column=0, columnspan=col_span, pady=Spacing.XL, padx=Spacing.XL, sticky="ew")
+
+    def _load_more(self):
+        """Increment page and re-render to show more books."""
+        self._page += 1
+        self._render_books()
 
     def _delete_book(self, book_id: int):
         if ask_yes_no(self, "Xác nhận xóa", "Bạn có chắc muốn xóa sách này khỏi thư viện?\n(File gốc vẫn được giữ nguyên)", is_danger=True):
@@ -321,6 +605,4 @@ class LibraryView(ctk.CTkFrame):
             
         BookDetailWindow(self, book_details, self.translation_service, self.db_manager, self.settings_manager)
 
-    def _open_settings(self):
-        from .settings_window import SettingsWindow
-        SettingsWindow(self, self.settings_manager, self.translation_service)
+

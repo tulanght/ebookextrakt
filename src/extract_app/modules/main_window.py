@@ -41,7 +41,11 @@ from .ui.results_view import ResultsView
 from .ui.log_panel import LogPanel
 from .ui.loading_overlay import LoadingOverlay
 from .ui.library_view import LibraryView # New Import
+from .ui.search_view import SearchView
 from .ui.settings_view import SettingsView # New Import
+from .ui.ingestion_view import IngestionView # New Import
+
+
 
 class MainWindow(ctk.CTk):
     """
@@ -52,6 +56,7 @@ class MainWindow(ctk.CTk):
         super().__init__()
         self.title("E-Extract — Ebook Extraction & Translation")
         self.geometry("1200x800")
+        self.state("zoomed")
         # Theme Configuration
         ctk.set_appearance_mode("Dark")
         self.configure(fg_color=Colors.BG_APP) 
@@ -74,6 +79,7 @@ class MainWindow(ctk.CTk):
         self.top_bar: TopBarFrame
         self.dashboard_view: DashboardView
         self.results_view: ResultsView
+        self.ingestion_view = None
         self.loading_frame: ctk.CTkFrame
         self.loading_label: ctk.CTkLabel
         
@@ -84,6 +90,9 @@ class MainWindow(ctk.CTk):
         self._create_main_layout()
         self._init_components()
         self._show_view("dashboard")
+        # Preload all lazy views in the background (300ms apart) so navigation feels instant
+        self.after(600, self._preload_background_views)
+
 
     def _create_main_layout(self):
         """Configure the main grid layout: Sidebar (Left) + Content (Right)."""
@@ -133,25 +142,19 @@ class MainWindow(ctk.CTk):
         # Let's wrap it in an `after` call to be safe from threads.
         debug_logger.register_listener(lambda msg: self.after(0, self.log_panel.write_log, msg))
 
-        # 6. Views
+        # 6. Lazy Views — only DashboardView + LoadingOverlay created at startup.
+        # All other views are created on first navigation to reduce startup time and handles.
         self.dashboard_view = DashboardView(self.content_area, on_import=self._on_select_file)
-        self.results_view = ResultsView(self.content_area, on_extract=self._on_extract_content)
-        self.library_view = LibraryView(
-            self.content_area, 
-            db_manager=self.db_manager,
-            settings_manager=self.settings_manager,
-            translation_service=self.translation_service
-        ) # Initialize Library View
-        self.settings_view = SettingsView(
-            self.content_area, 
-            settings_manager=self.settings_manager, 
-            translation_service=self.translation_service
-        )
+        self.results_view   = None  # lazy
+        self.library_view   = None  # lazy
+
+        self.search_view    = None  # lazy
+        self.settings_view  = None  # lazy
         
-        # 7. Loading Overlay (Replaces old loading_frame)
+        # 7. Loading Overlay
         self.loading_overlay = LoadingOverlay(self.content_area)
-        
-        # Initial Load of History
+
+        # Initial dashboard data
         self._update_dashboard_history()
 
     def _update_dashboard_history(self):
@@ -162,6 +165,22 @@ class MainWindow(ctk.CTk):
         # Update connection stats
         stats = self.db_manager.get_dashboard_stats()
         self.dashboard_view.update_stats(stats.get('books', 0), stats.get('translated_articles', 0))
+
+    def _preload_background_views(self):
+        """Pre-create all lazy views in the background using staggered after() calls.
+
+        Creates one view every 300ms while Dashboard is visible so that navigating
+        to any tab feels instant after the first ~2 seconds.
+        """
+        _lazy_views = [
+            "results",   # lightweight, fast
+            "settings",  # medium weight
+            "search",    # medium weight
+            "ingestion", # lightweight
+            "library",   # heaviest — loads book covers
+        ]
+        for i, view_name in enumerate(_lazy_views):
+            self.after(i * 300, lambda n=view_name: self._get_view(n))
 
     def _on_open_recent_file(self, filepath: str):
         """Handle opening a file from history."""
@@ -193,34 +212,70 @@ class MainWindow(ctk.CTk):
                      self._show_view("dashboard")
 
         elif view_name == "library":
-            self.library_view.refresh_library() # Refresh content
-            self._show_view("library")
-            
+            was_created = self.library_view is not None
+            self._show_view("library")  # lazy-create if needed
+            if was_created:
+                self.library_view.refresh_library()  # refresh only on re-visits
+
+        elif view_name == "ingestion":
+            self._show_view("ingestion")
+
+        elif view_name == "search":
+            self._show_view("search")
+
         elif view_name == "settings":
             self._show_view("settings")
 
-    def _show_view(self, view_name: str):
-        """Switch the visible view in the content area."""
-        # Hide all
-        self.dashboard_view.grid_forget()
-        self.results_view.grid_forget()
-        self.library_view.grid_forget()
-        self.results_view.grid_forget()
-        self.library_view.grid_forget()
-        self.settings_view.grid_forget()
-        self.loading_overlay.grid_forget()
-        
-        # Show selected
+    def _get_view(self, view_name: str):
+        """Return the view widget, creating it lazily on first access."""
+        if view_name == "results":
+            if self.results_view is None:
+                self.results_view = ResultsView(self.content_area, on_extract=self._on_extract_content)
+            return self.results_view
+        if view_name == "library":
+            if self.library_view is None:
+                self.library_view = LibraryView(self.content_area, db_manager=self.db_manager, settings_manager=self.settings_manager, translation_service=self.translation_service)
+            return self.library_view
+
+        if view_name == "search":
+            if self.search_view is None:
+                self.search_view = SearchView(self.content_area, db_manager=self.db_manager)
+            return self.search_view
+        if view_name == "ingestion":
+            if self.ingestion_view is None:
+                self.ingestion_view = IngestionView(
+                    self.content_area, 
+                    db_manager=self.db_manager, 
+                    cloud_client=self.translation_service.cloud_client
+                )
+            return self.ingestion_view
+        if view_name == "settings":
+            if self.settings_view is None:
+                self.settings_view = SettingsView(self.content_area, settings_manager=self.settings_manager, translation_service=self.translation_service)
+            return self.settings_view
         if view_name == "dashboard":
-            self.dashboard_view.grid(row=0, column=0, sticky="nsew")
-        elif view_name == "results":
-            self.results_view.grid(row=0, column=0, sticky="nsew")
-        elif view_name == "library":
-            self.library_view.grid(row=0, column=0, sticky="nsew")
-        elif view_name == "loading":
-            self.loading_overlay.grid(row=0, column=0, sticky="nsew")
-        elif view_name == "settings":
-            self.settings_view.grid(row=0, column=0, sticky="nsew")
+            return self.dashboard_view
+        if view_name == "loading":
+            return self.loading_overlay
+        return None
+
+    def _show_view(self, view_name: str):
+        """Switch the visible view in the content area (lazy-load on first access)."""
+        # Always-present views
+        self.dashboard_view.grid_forget()
+        self.loading_overlay.grid_forget()
+
+        # Hide lazy views only if already created
+        for attr in ("results_view", "library_view",
+                     "search_view", "ingestion_view", "settings_view"):
+            v = getattr(self, attr)
+            if v is not None:
+                v.grid_forget()
+
+        # Show target (creates it if needed)
+        target = self._get_view(view_name)
+        if target is not None:
+            target.grid(row=0, column=0, sticky="nsew")
 
     def _on_select_file(self):
         """Handle file selection from Dashboard."""
@@ -321,18 +376,43 @@ class MainWindow(ctk.CTk):
     # or be coordinated from here if ResultsView emits an event.
     def _on_extract_content(self, target_dir: str):
         """Handle extraction trigger from ResultsView."""
-        if not target_dir:
-            return
-
-        # Check for overwrite (Main Thread UI interaction)
+        # Calculate target_dir automatically based on organize_ebooks logic
+        filename = Path(self.current_filepath).name
+        
+        try:
+            import sys
+            project_root = Path(__file__).resolve().parent.parent.parent.parent
+            if str(project_root) not in sys.path:
+                sys.path.insert(0, str(project_root))
+            from scripts.organize_ebooks import classify_file, load_overrides, EBOOK_ROOT
+            
+            overrides = load_overrides()
+            category = classify_file(filename, overrides)
+            
+            if category == "_NOT_BIOLOGY":
+                base_dir = EBOOK_ROOT / "_Review_Not_Biology"
+            elif category == "_UNCLASSIFIED":
+                base_dir = Path("D:/Ebooks/_UNCLASSIFIED")
+            elif category == "_SKIP":
+                base_dir = Path("D:/Ebooks/_SKIP")
+            else:
+                base_dir = EBOOK_ROOT / category
+                
+        except Exception as e:
+            print(f"Error determining category: {e}")
+            base_dir = Path("D:/Ebooks/_UNCLASSIFIED")
+            
+        base_dir.mkdir(parents=True, exist_ok=True)
+        
         output_name = Path(self.current_filepath).name
-        full_output_path = Path(target_dir) / output_name.replace(" ", "_").replace(".epub", "").replace(".pdf", "")
+        clean_name = output_name.replace(" ", "_").replace(".epub", "").replace(".pdf", "")
+        full_output_path = base_dir / clean_name
         
         if full_output_path.exists():
             if not ask_yes_no(
                 self,
                 "Thư mục đã tồn tại", 
-                f"Thư mục '{full_output_path.name}' đã tồn tại.\nBạn có muốn ghi đè (xóa và tạo lại) không?",
+                f"Thư mục '{full_output_path.name}' đã tồn tại trong {base_dir.name}.\nBạn có muốn ghi đè (xóa và tạo lại) không?",
                 is_danger=True
             ):
                 return
@@ -349,16 +429,17 @@ class MainWindow(ctk.CTk):
             target=self._worker_save_content, 
             args=(
                 self.current_results.get('content', []), 
-                Path(target_dir), 
+                base_dir, 
                 book_title,
                 metadata.get('author', 'Unknown'),
                 metadata.get('cover_image_path', ''),
-                metadata.get('published_year', '')
+                metadata.get('published_year', ''),
+                category
             ),
             daemon=True
         ).start()
 
-    def _worker_save_content(self, content, target_dir, book_title, author, cover_path, published_year=""):
+    def _worker_save_content(self, content, target_dir, book_title, author, cover_path, published_year="", category=""):
         """Worker thread for saving content."""
         def progress_adapter(percent, msg):
             # Update UI from worker thread safely
@@ -371,7 +452,8 @@ class MainWindow(ctk.CTk):
             author=author,
             original_path=self.current_filepath,
             cover_path=cover_path,
-            published_year=published_year
+            published_year=published_year,
+            category=category
         )
         
         # Schedule completion on main thread

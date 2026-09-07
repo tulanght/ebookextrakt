@@ -80,3 +80,15 @@ def calculate_book_eta(chapters: List[Dict[str, Any]], wpm: int = 180, engine: s
         return f"{res} ({engine_name})"
         
     return res
+
+def calculate_cost(tokens_in: int, tokens_out: int, engine: str) -> float:
+    """Calculates the estimated cost based on token usage.
+    Currently uses Gemini 1.5 Flash pricing: $0.075/1M in, $0.30/1M out.
+    Local LLM costs $0.
+    """
+    if not engine or str(engine).lower() == "local":
+        return 0.0
+    
+    cost_in = (tokens_in / 1_000_000) * 0.075
+    cost_out = (tokens_out / 1_000_000) * 0.30
+    return cost_in + cost_out

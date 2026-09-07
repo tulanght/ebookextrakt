@@ -24,6 +24,7 @@ This project uses ai-devkit for structured AI-assisted development. Phase docume
 - **Branch Naming**: `feature/<name>`, `fix/<name>`, `docs/<name>`, `exp/<name>`
 - **Conventional Commits**: `<type>(<scope>): <subject>`
 - **ATOMIC COMMITS**: One logical change per commit.
+- **AUTONOMOUS GIT MANAGEMENT**: The AI assistant (Antigravity) is responsible for executing all git commands (add, commit, status, branch management) on the active working feature branch. The user expects to only receive git execution reports.
 - **DOCUMENTATION MANDATE**: Before closing a task, update:
     - `CHANGELOG.md` (what changed)
     - `ROADMAP.md` (mark features as `[x]`)

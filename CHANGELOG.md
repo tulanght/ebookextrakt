@@ -5,6 +5,71 @@ Dự án này tuân theo [Keep a Changelog](https://keepachangelog.com/en/1.0.0/
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- Restored the ingestion cleanup worker used by queued single-file and batch jobs.
+- Prevented ingestion cleanup from permanently deleting ebooks when Windows Recycle
+  Bin handling fails, including the batch AI duplicate path.
+- Excluded the active source file from duplicate lookup and preserved its path when
+  reclassifying an ebook already stored in the correct destination.
+- Reordered catalog removal so database deletion is committed only after Recycle Bin
+  cleanup succeeds.
+- Added the previously ignored `requirements.txt` to version control and declared
+  `send2trash==2.1.0` as an explicit runtime dependency.
+- Preserved cataloged duplicate sources for explicit reconciliation instead of
+  recycling files while their database rows still reference them.
+- Routed quarantine logs and widget cleanup through the Tk main-thread dispatcher.
+
+### Testing
+
+- Added regression coverage for registered-duplicate preservation and Tk-safe
+  quarantine logging/widget cleanup; the maintained suite now passes 139 tests.
+- Added RED regression cases for source-file self-matching, DB/Recycle Bin operation
+  ordering, failure preservation, and the `send2trash` runtime dependency manifest.
+- Added regression coverage for ingestion worker wiring and recoverable duplicate cleanup.
+- Updated translation and queue tests to the current three-value `TranslationService`
+  contract and `ChunkingStrategy` facade.
+- Stabilized Search UI fixtures with concrete database statistics and a shared hidden Tk root.
+- Completed the TDD cycle at 132 passed with no failures in the maintained `tests/`
+  suite.
+
+## [2.4.0] - 2026-08-30
+
+### 🌿 Quản lý & Đối soát Kho Sách Thực vật (Corpus Ingestion & Reconciliation)
+-   **Markdown Exporter Tag Strip (`markdown_exporter.py`)**:
+    -   Tự động loại bỏ thẻ `[Image Anchor: ...]` khi sinh file `content.md` từ `content.txt` bằng regex `\[Image Anchor:[^\]]*\]`.
+    -   Bảo vệ dữ liệu gốc: Giữ nguyên vẹn 100% `content.txt` làm master chỉ đọc trên đĩa.
+    -   Đồng bộ ngưỡng bỏ file rác `MIN_ARTICLE_BYTES` (400 bytes) qua `stat().st_size`.
+    -   Đã xuất thành công 25.283 file `.md` cho kho `D:\Garden Home and Plants`.
+-   **Công cụ Đối soát Toàn vẹn Kho (`scripts/reconcile_corpus.py`)**:
+    -   Viết mới công cụ đối soát 4 chiều: số `content.txt` trên đĩa, số `content.md` trên đĩa, số article trong `extract.db`, và số document trong QMD index (`~/.cache/qmd/index.sqlite`).
+    -   Tự động khấu trừ số file rác bị loại bởi ngưỡng `MIN_ARTICLE_BYTES`.
+    -   Báo cáo chi tiết vị trí trôi lệch/chênh lệch và trả mã exit code phù hợp (`exit 0` khi khớp, `exit 1` khi lệch).
+
+-   **Rút `JINA_API_KEY` khỏi mã nguồn (`core/database.py`)**:
+    -   Key hard-code ở `qmd_search()` chuyển sang đọc bằng `os.getenv('JINA_API_KEY')`, lưu trong `.env` (đã gitignore).
+    -   Thêm `vr-cuongjsl-*.json` (service account key) vào `.gitignore`.
+-   **Làm sạch thẻ ảnh trong DB (`scripts/clean_image_anchors.py`)**:
+    -   `UPDATE` 886 article dính `[Image Anchor: ...]` trong `articles.content_text`, tính lại `word_count`.
+    -   Không `DELETE` bản ghi nào: `COUNT(*) FROM articles` giữ nguyên trước và sau.
+    -   Không gọi `rebuild_fts_index()` — trigger `articles_fts_update` tự đồng bộ.
+-   **Kết quả nạp kho Thực vật**: 234 thư mục → 230 cuốn gắn `site_category='plant'`
+    (4 cuốn còn lại là sách ảnh, 0 file ≥400 byte). Sách `plant` 63 → 241, article `plant` (leaf) 11.188 → 27.432.
+
+## [2.3.0] - 2026-08-22
+
+### 📚 Hệ thống Quản lý Sách (Ebook Ingestion Pipeline V2)
+-   **Dynamic Path Resolution**: Loại bỏ hoàn toàn danh mục hard-code (`PREDEFINED_CATEGORIES`). Giao diện Quản lý Sách và Thư viện giờ đây tự động quét và tạo danh mục dựa trên các thư mục con thực tế tồn tại trong `D:\Ebooks`.
+-   **Hybrid Classification Engine**: Luồng xử lý AI giờ đây kết hợp **Vertex AI** (để trích xuất/chuẩn hóa metadata như Tiêu đề, Tác giả) và một Rule Engine nội bộ (`organize_ebooks.py`) để phân luồng file vật lý chính xác.
+-   **Smart Deduplication & Cleanup**: 
+    -   Bổ sung tính năng quét trùng lặp cả với Database lẫn các file nội bộ.
+    -   Tích hợp thư viện `send2trash` giúp tính năng Cô lập/Xóa ném file thẳng vào Recycle Bin của Windows.
+    -   Thêm nút "🗑️ Xóa tất cả trùng lặp" (Batch Delete) và cơ chế AI tự động dọn dẹp file tàn dư nếu phát hiện sách đã tồn tại (Late Duplicate Detection).
+    -   Fix lỗi đóng băng giao diện "Đang dừng..." bằng khối `try-except-finally` trong background thread.
+-   **Database**: Cập nhật lưu trữ cột `category` để đồng bộ với cấu trúc vật lý thư mục.
+
 ## [2.2.0] - 2026-03-04
 
 ### 🧠 Phân tích PDF (PDF Semantic Splitting)

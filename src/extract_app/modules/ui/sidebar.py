@@ -10,6 +10,7 @@ from typing import Callable, Optional
 import customtkinter as ctk
 from .theme import Colors, Fonts, Spacing
 
+
 class SidebarFrame(ctk.CTkFrame):
     """
     Left sidebar with navigation buttons.
@@ -19,6 +20,8 @@ class SidebarFrame(ctk.CTkFrame):
     NAV_ITEMS = [
         ("🏠", "Dashboard",  "dashboard"),
         ("📚", "Thư viện",   "library"),
+        ("🔍", "Tìm Kiếm",   "search"),
+        ("📥", "Quản lý Ebook", "ingestion"),
         ("⚙️", "Cài đặt",   "settings"),
     ]
 

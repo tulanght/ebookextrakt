@@ -15,8 +15,13 @@ logger = logging.getLogger(__name__)
 
 try:
     from llama_cpp import Llama
-except ImportError:
+    _LLAMA_AVAILABLE = True
+except (ImportError, OSError, Exception):
+    # ImportError  → llama-cpp-python not installed
+    # OSError      → native DLL not found (common in PyInstaller frozen EXE)
+    # Exception    → any other loading failure
     Llama = None
+    _LLAMA_AVAILABLE = False
 
 class LocalGenAI:
     """

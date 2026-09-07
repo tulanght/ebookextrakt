@@ -17,6 +17,11 @@ class SettingsManager:
     
     DEFAULT_SETTINGS = {
         "gemini_api_key": "",
+        "cloud_provider": "ai_studio", # "ai_studio" or "vertex_ai"
+        "vertex_project_id": "",
+        "vertex_region": "us-central1",
+        "vertex_credentials_path": "",
+        "vertex_api_key": "",
         "theme": "Dark",
         "default_output_dir": "",
         "chunk_size": 3000,

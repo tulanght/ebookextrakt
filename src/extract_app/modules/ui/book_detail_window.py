@@ -40,6 +40,12 @@ class BookDetailWindow(ctk.CTkToplevel):
       - Webview preview
     """
 
+    def iconbitmap(self, bitmap=None, default=None):
+        try:
+            super().iconbitmap(bitmap=bitmap, default=default)
+        except Exception:
+            pass
+
     def __init__(self, master, book_details: Dict, translation_service, db_manager, settings_manager):
         super().__init__(master, fg_color=Colors.BG_APP)
         self.title(book_details.get('title', 'Chi tiết sách'))
@@ -146,6 +152,24 @@ class BookDetailWindow(ctk.CTkToplevel):
         )
         self.btn_queue_start.pack(side="right", padx=(2, Spacing.MD), pady=Spacing.SM)
 
+        self.btn_reset_all = ctk.CTkButton(
+            self.queue_bar, text="🗑 Xóa bản dịch (Tất cả)", width=140, height=26,
+            fg_color="transparent", border_width=1, border_color=Colors.DANGER,
+            text_color=Colors.DANGER, hover_color=Colors.DANGER_HOVER,
+            font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
+            command=self._reset_all_translations
+        )
+        self.btn_reset_all.pack(side="right", padx=2, pady=Spacing.SM)
+
+        self.btn_queue_all = ctk.CTkButton(
+            self.queue_bar, text="⚡ Dịch toàn bộ sách", width=130, height=26,
+            fg_color="transparent", border_width=1, border_color=Colors.PRIMARY,
+            text_color=Colors.PRIMARY, hover_color=Colors.BG_CARD_HOVER,
+            font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
+            command=self._queue_all_articles
+        )
+        self.btn_queue_all.pack(side="right", padx=2, pady=Spacing.SM)
+
         # ── Article List ──────────────────────────────────────────────
         self.list_frame = ctk.CTkScrollableFrame(
             self, fg_color=Colors.BG_CARD, corner_radius=Spacing.CARD_RADIUS,
@@ -166,10 +190,10 @@ class BookDetailWindow(ctk.CTkToplevel):
         ).pack(side="left", padx=Spacing.MD, pady=Spacing.SM)
 
         self.export_format_var = tk.StringVar(value="Markdown")
-        ctk.CTkOptionMenu(
+        ctk.CTkComboBox(
             export_bar, variable=self.export_format_var,
-            values=["Markdown", "TXT", "Chỉ bản dịch"],
-            width=130,
+            values=["Markdown", "TXT", "Chỉ bản dịch", "Website tĩnh (HTML/JS)"],
+            width=180,
             fg_color=Colors.BG_INPUT, button_color=Colors.BORDER,
             button_hover_color=Colors.PRIMARY, text_color=Colors.TEXT_PRIMARY,
             dropdown_fg_color=Colors.BG_CARD, dropdown_text_color=Colors.TEXT_PRIMARY,
@@ -190,14 +214,23 @@ class BookDetailWindow(ctk.CTkToplevel):
 
         self._render_content()
 
-        # Ensure window appears on top (Windows fix)
-        self.attributes('-topmost', True)
-        self.after(100, lambda: self.attributes('-topmost', False))
+        self._render_content()
+
         self.focus_force()
 
     # ─────────────────────────────────────────────────────────────────
     # Content Rendering
     # ─────────────────────────────────────────────────────────────────
+
+    def _reset_all_translations(self):
+        if not self.book_id:
+            return
+            
+        if ask_yes_no(self, "Xác nhận xóa", "Bạn có chắc muốn xóa TOÀN BỘ bản dịch của cuốn sách này và đặt lại trạng thái về 'Chưa dịch'?\nHành động này không thể hoàn tác.", is_danger=True):
+            self.db_manager.reset_book_translations(self.book_id)
+            # Refetch data
+            self._render_content()
+
 
     def _render_content(self):
         """Refresh chapter/article list from DB."""
@@ -382,13 +415,14 @@ class BookDetailWindow(ctk.CTkToplevel):
                 is_queued = self.queue_manager.is_queued(article_id)
                 q_text = "✖ Hủy Queue" if is_queued else "➕ Thêm Queue"
                 q_color = Colors.DANGER if is_queued else Colors.TEXT_MUTED
-                ctk.CTkButton(
+                btn_queue = ctk.CTkButton(
                     right_frame, text=q_text, width=90, height=26,
                     fg_color="transparent", border_width=1, border_color=q_color,
                     text_color=q_color, hover_color=Colors.BG_CARD_HOVER,
-                    font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS,
-                    command=lambda a=article: self._toggle_article_queue(a)
-                ).pack(side="left", padx=2, pady=4)
+                    font=Fonts.SMALL, corner_radius=Spacing.BUTTON_RADIUS
+                )
+                btn_queue.configure(command=lambda a=article, b=btn_queue: self._toggle_article_queue(a, b))
+                btn_queue.pack(side="left", padx=2, pady=4)
         else:
             ctk.CTkLabel(right_frame, text="(Mục lục)", text_color=Colors.TEXT_MUTED, font=Fonts.TINY).pack(
                 side="left", padx=Spacing.MD, pady=2
@@ -398,22 +432,176 @@ class BookDetailWindow(ctk.CTkToplevel):
     # Export / Selection Methods
     # ─────────────────────────────────────────────────────────────────
 
+    def _safe_askdirectory(self, title="Chọn thư mục", initialdir="C:\\", **options):
+        import subprocess
+        ps_cmd = (
+            "Add-Type -AssemblyName System.Windows.Forms; "
+            f"$d = New-Object System.Windows.Forms.FolderBrowserDialog; "
+            f"$d.Description = '{title}'; "
+            f"$d.SelectedPath = '{initialdir}'; "
+            "$d.ShowNewFolderButton = $true; "
+            "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK)"
+            "{ Write-Output $d.SelectedPath }"
+        )
+        result = subprocess.run(
+            ["powershell", "-WindowStyle", "Hidden", "-NoProfile", "-Command", ps_cmd],
+            capture_output=True, text=True, timeout=60
+        )
+        return result.stdout.strip() or None
+
+    def _safe_asksaveasfilename(self, title="Lưu file", initialdir="C:\\",
+                                 defaultextension="", filetypes=None, **options):
+        import subprocess
+        ext = defaultextension.lstrip(".")
+        filter_str = f"*.{ext}" if ext else "*.*"
+        ps_cmd = (
+            "Add-Type -AssemblyName System.Windows.Forms; "
+            f"$d = New-Object System.Windows.Forms.SaveFileDialog; "
+            f"$d.Title = '{title}'; "
+            f"$d.InitialDirectory = '{initialdir}'; "
+            f"$d.Filter = 'Files ({filter_str})|{filter_str}'; "
+            "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK)"
+            "{ Write-Output $d.FileName }"
+        )
+        result = subprocess.run(
+            ["powershell", "-WindowStyle", "Hidden", "-NoProfile", "-Command", ps_cmd],
+            capture_output=True, text=True, timeout=60
+        )
+        return result.stdout.strip() or None
+
     def _toggle_select_all(self):
         selected = self.select_all_var.get()
         for var in self.article_checks.values():
             var.set(selected)
 
     def _export_selected(self):
-        """Export ticked articles to a file."""
+        """Export ticked articles to a file or folder."""
         fmt = self.export_format_var.get()
         selected_ids = {art_id for art_id, var in self.article_checks.items() if var.get()}
         if not selected_ids:
             show_warning(self, "Chưa chọn bài", "Hãy tick chọn ít nhất 1 bài trước khi xuất!")
             return
 
+        # Prepare safe export directory to avoid OneDrive accented path crashes in Tkinter
+        import os
+        safe_export_dir = "C:\\Users\\AORUS\\Documents\\EBOOKS-WEB"
+        try:
+            os.makedirs(safe_export_dir, exist_ok=True)
+        except Exception as e:
+            print("Lỗi tạo thư mục:", e)
+            safe_export_dir = "C:\\"
+            
+        if fmt == "Website tĩnh (HTML/JS)":
+            save_path = self._safe_askdirectory(title="Chọn thư mục lưu Website tĩnh", initialdir=safe_export_dir)
+            if not save_path:
+                return
+            
+            try:
+                book_data = self.db_manager.get_book_details(self.book_id)
+                book_title = book_data.get('title', self.title()) if book_data else self.title()
+                author = book_data.get('author', 'Unknown') if book_data else 'Unknown'
+                year = book_data.get('published_year', '') if book_data else ''
+                
+                import re
+                def clean_filename(name):
+                    return re.sub(r'[\\/*?:"<>|]', "", str(name)).strip()
+                
+                folder_name = clean_filename(book_title)
+                if author and author != 'Unknown':
+                    folder_name += f" - {clean_filename(author)}"
+                if year:
+                    folder_name += f" ({clean_filename(year)})"
+                
+                output_dir = Path(save_path) / folder_name
+                output_dir.mkdir(parents=True, exist_ok=True)
+
+                source_path = Path(book_data.get('source_path', '')) if book_data else None
+                images_dir = output_dir / "images"
+                images_dir.mkdir(parents=True, exist_ok=True)
+
+                full_chapters = []
+                for chap_lite in self.chapters:
+                    full_articles = []
+                    
+                    # Try to locate the physical chapter directory for EPUBs
+                    chap_dir = None
+                    if source_path and source_path.is_dir():
+                        chap_title = chap_lite.get('title')
+                        if chap_title:
+                            potential_chap_dirs = [d for d in source_path.iterdir() if d.is_dir() and d.name.endswith(chap_title)]
+                            if potential_chap_dirs:
+                                chap_dir = potential_chap_dirs[0]
+
+                    for art_lite in chap_lite.get('articles', []):
+                        art_id = art_lite['id']
+                        if art_id in selected_ids and art_lite.get('is_leaf', 1):
+                            content = self.db_manager.get_article_content(art_id)
+                            trans = art_lite.get('translation_text', '')
+                            
+                            # 1. Handle DB images (PDF extractions)
+                            for img in self.db_manager.get_article_images(art_id):
+                                src_path_db = Path(img['path'])
+                                if src_path_db.exists():
+                                    dest = images_dir / src_path_db.name
+                                    if not dest.exists():
+                                        try:
+                                            shutil.copy2(src_path_db, dest)
+                                        except Exception:
+                                            pass
+
+                            # 2. Handle EPUB images (Namespaced to prevent collisions)
+                            art_dir = None
+                            if chap_dir:
+                                art_subtitle = art_lite.get('subtitle')
+                                if art_subtitle:
+                                    potential_art_dirs = [d for d in chap_dir.iterdir() if d.is_dir() and d.name.endswith(art_subtitle)]
+                                    if potential_art_dirs:
+                                        art_dir = potential_art_dirs[0]
+
+                            if art_dir:
+                                def replace_image(match):
+                                    alt = match.group(1)
+                                    src = match.group(2)
+                                    filename = Path(src).name
+                                    new_name = f"{art_id}_{filename}"
+                                    
+                                    # Copy image physically
+                                    src_img = art_dir / filename
+                                    if src_img.exists() and src_img.is_file():
+                                        dest = images_dir / new_name
+                                        if not dest.exists():
+                                            try:
+                                                shutil.copy2(src_img, dest)
+                                            except Exception:
+                                                pass
+                                    return f"![{alt}]({new_name})"
+                                    
+                                if content:
+                                    content = re.sub(r'!\[(.*?)\]\((.*?)\)', replace_image, content)
+                                if trans:
+                                    trans = re.sub(r'!\[(.*?)\]\((.*?)\)', replace_image, trans)
+
+                            full_articles.append({
+                                'subtitle': art_lite.get('subtitle'), 
+                                'content_text': content, 
+                                'translation_text': trans
+                            })
+                    if full_articles:
+                        full_chapters.append({'title': chap_lite.get('title'), 'articles': full_articles})
+                
+                # Generate base webview folder (with updated content)
+                webview_generator.generate_webview(book_title, author, full_chapters, output_dir)
+                
+                self.lbl_export_status.configure(text=f"✓ Đã xuất Website", text_color=Colors.SUCCESS)
+                self.after(3000, lambda: self.lbl_export_status.configure(text=""))
+                show_info(self, "Thành công", f"Đã xuất Website tĩnh thành công tại:\n{output_dir}")
+            except Exception as e:
+                show_error(self, "Lỗi xuất Web", str(e))
+            return
+
         ext = ".md" if fmt == "Markdown" else ".txt"
         filetypes = [("Markdown", "*.md"), ("Tất cả", "*.*")] if fmt == "Markdown" else [("Text file", "*.txt"), ("Tất cả", "*.*")]
-        save_path = fd.asksaveasfilename(parent=self, defaultextension=ext, filetypes=filetypes, initialfile=f"export{ext}")
+        save_path = self._safe_asksaveasfilename(defaultextension=ext, filetypes=filetypes, initialfile=f"export{ext}", initialdir=safe_export_dir)
         if not save_path:
             return
 
@@ -463,10 +651,12 @@ class BookDetailWindow(ctk.CTkToplevel):
     # Queue Control Methods
     # ─────────────────────────────────────────────────────────────────
 
-    def _toggle_article_queue(self, article: Dict) -> None:
+    def _toggle_article_queue(self, article: Dict, btn_queue=None) -> None:
         article_id = article.get('id')
         if self.queue_manager.is_queued(article_id):
             self.queue_manager.remove(article_id)
+            if btn_queue:
+                btn_queue.configure(text="➕ Thêm Queue", text_color=Colors.TEXT_MUTED, border_color=Colors.TEXT_MUTED)
         else:
             content = self.db_manager.get_article_content(article_id) or ""
             if not content:
@@ -478,8 +668,39 @@ class BookDetailWindow(ctk.CTkToplevel):
                 word_count=article.get('word_count', 0) or 0,
                 content=content,
             ))
-        self._render_content()
+            if btn_queue:
+                btn_queue.configure(text="✖ Hủy Queue", text_color=Colors.DANGER, border_color=Colors.DANGER)
         self._update_queue_status_label()
+
+    def _queue_all_articles(self) -> None:
+        msg = (
+            "Hệ thống sẽ tiến hành thêm TOÀN BỘ bài viết (chưa dịch) của cuốn sách này vào hàng đợi.\n\n"
+            "CẢNH BÁO: Thao tác này sẽ tiêu thụ nhiều API Token. "
+            "Sau khi thêm xong, hãy lướt qua mục lục và bấm '✖ Hủy Queue' "
+            "với các bài không cần thiết (Phụ lục, References) trước khi bấm 'Bắt đầu Queue'!"
+        )
+        show_info(self, "Lưu ý Dịch Toàn Bộ", msg)
+        count = 0
+        for chapter in self.chapters:
+            for article in chapter.get('articles', []):
+                if article.get('is_leaf', 1) and article.get('status') != 'translated':
+                    article_id = article.get('id')
+                    if article_id not in self.queue_manager.pending_ids:
+                        content = self.db_manager.get_article_content(article_id) or ""
+                        if content.strip():
+                            self.queue_manager.enqueue(ChapterQueueItem(
+                                article_id=article_id,
+                                subtitle=article.get('subtitle', ''),
+                                word_count=article.get('word_count', 0) or 0,
+                                content=content,
+                            ))
+                            count += 1
+        if count > 0:
+            self._render_content()
+            self._update_queue_status_label()
+            show_info(self, "Thành công", f"Đã thêm {count} bài viết vào Hàng đợi.\nHãy bấm 'Bắt đầu Queue' để chạy.")
+        else:
+            show_info(self, "Thông báo", "Không tìm thấy bài viết nào hợp lệ, hoặc tất cả các bài đều đã được dịch xong.")
 
     def _start_queue(self) -> None:
         if not self.queue_manager.pending_ids:
@@ -533,6 +754,23 @@ class BookDetailWindow(ctk.CTkToplevel):
         else:
             text = f"📋 Hàng đợi: {pending} bài chờ dịch"
         self.lbl_queue_status.configure(text=text)
+
+        # Update button states
+        if status == "running":
+            self.btn_queue_start.configure(state="disabled")
+            self.btn_queue_pause.configure(state="normal", text="⏸ Tạm dừng")
+            self.btn_queue_stop.configure(state="normal")
+            self.btn_queue_all.configure(state="disabled")
+        elif status == "paused":
+            self.btn_queue_start.configure(state="disabled")
+            self.btn_queue_pause.configure(state="normal", text="▶ Tiếp tục")
+            self.btn_queue_stop.configure(state="normal")
+            self.btn_queue_all.configure(state="disabled")
+        else: # idle
+            self.btn_queue_start.configure(state="normal" if pending > 0 else "disabled")
+            self.btn_queue_pause.configure(state="disabled", text="⏸ Tạm dừng")
+            self.btn_queue_stop.configure(state="normal" if pending > 0 else "disabled")
+            self.btn_queue_all.configure(state="normal")
 
     # ─────────────────────────────────────────────────────────────────
     # AI Glossary Extraction
@@ -625,7 +863,20 @@ class BookDetailWindow(ctk.CTkToplevel):
         self.progress_bar.start()
 
         def worker():
-            terms, err = self.translation_service.extract_glossary_from_text(sample_text, subject)
+            start_time = time.time()
+            engine = self.settings_manager.get("translation_engine", "cloud")
+            terms, usage, err = self.translation_service.extract_glossary_from_text(sample_text, subject)
+            duration = time.time() - start_time
+            if terms and usage and all_article_ids:
+                first_art_id = all_article_ids[0]
+                self.db_manager.log_api_usage(
+                    first_art_id,
+                    'extract_glossary',
+                    engine,
+                    usage.get('in', 0),
+                    usage.get('out', 0),
+                    duration
+                )
             self.after(0, lambda: self._on_glossary_extraction_complete(terms, err, target_category))
 
         threading.Thread(target=worker, daemon=True).start()
@@ -707,9 +958,18 @@ class BookDetailWindow(ctk.CTkToplevel):
                 chunk_delay = self.settings_manager.get("chunk_delay", 2.0)
                 engine = self.settings_manager.get("translation_engine", "cloud")
                 start_time = time.time()
-                translation = self.translation_service.translate_text(content_text, chunk_size=chunk_size, delay=chunk_delay, progress_callback=progress_callback)
+                translation, usage, err = self.translation_service.translate_text(content_text, chunk_size=chunk_size, delay=chunk_delay, progress_callback=progress_callback)
                 translation_time = time.time() - start_time
                 if translation:
+                    if usage:
+                        self.db_manager.log_api_usage(
+                            article_id, 
+                            'translation', 
+                            engine, 
+                            usage.get('in', 0), 
+                            usage.get('out', 0), 
+                            translation_time
+                        )
                     update_dynamic_wpm(self.settings_manager, engine, article.get('word_count', 0) or 0, translation_time)
                 self.after(0, lambda: self._on_translation_complete(article_id, translation))
             except Exception as e:
@@ -775,7 +1035,19 @@ class BookDetailWindow(ctk.CTkToplevel):
         self.progress_bar.start()
 
         def worker():
-            result, err = self.translation_service.transform_text(archive_text, original_text, variant_type)
+            start_time = time.time()
+            engine = self.settings_manager.get("translation_engine", "cloud")
+            result, usage, err = self.translation_service.transform_text(archive_text, original_text, variant_type)
+            duration = time.time() - start_time
+            if result and usage:
+                self.db_manager.log_api_usage(
+                    article_id,
+                    f'transform_{variant_type}',
+                    engine,
+                    usage.get('in', 0),
+                    usage.get('out', 0),
+                    duration
+                )
             self.after(0, lambda: self._on_transform_complete(article_id, variant_type, result, err))
 
         threading.Thread(target=worker, daemon=True).start()
@@ -799,7 +1071,7 @@ class BookDetailWindow(ctk.CTkToplevel):
         content_text = self.db_manager.get_article_content(article['id'])
         full_article = article.copy()
         full_article['content_text'] = content_text
-        editor = DualViewEditor(self, full_article, self._save_translation_update, self.db_manager)
+        editor = DualViewEditor(self, full_article, self._save_translation_update, self.db_manager, self.translation_service)
         editor.grab_set()
 
     def _save_translation_update(self, article_id, new_text):
